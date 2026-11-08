@@ -1,4 +1,4 @@
-.PHONY: env up down restart logs ps reset build sh-worker sh-gateway
+.PHONY: env up down restart logs ps reset build sh-worker sh-gateway prod-up prod-down prod-logs k8s-dry
 
 env:
 	@test -f .env || cp .env.example .env
@@ -29,3 +29,16 @@ sh-worker:
 
 sh-gateway:
 	docker compose exec sounder-gateway bash
+
+prod-up:
+	docker compose -f docker-compose.prod.yml up -d
+
+prod-down:
+	docker compose -f docker-compose.prod.yml down
+
+prod-logs:
+	docker compose -f docker-compose.prod.yml logs -f --tail=100
+
+k8s-dry:
+	kubectl kustomize deploy/k8s > /tmp/sounder-k8s.yaml
+	@echo "rendered /tmp/sounder-k8s.yaml"

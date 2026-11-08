@@ -38,6 +38,14 @@ Web / 桌面 / Android
 | `sounder-desktop/` | `sounder-desktop`、`sounder.apk` | Wails v3 桌面壳与 Android 壳 |
 | `sounder-verify/` | `v2-isolation`、`v3-recovery` | 验证架构假设的工具 |
 
+## 三种部署方式
+
+| 方式 | 入口 | 说明 |
+|---|---|---|
+| 开发 | `docker-compose.yml` | 从源码构建镜像 |
+| 生产（Compose） | `docker-compose.prod.yml` | 拉 registry 镜像，缺凭证直接报错，带资源限制 |
+| Kubernetes | `deploy/k8s/` | Kustomize；worker 用 StatefulSet，含 NetworkPolicy 与 HPA |
+
 ## 快速开始
 
 ```bash

@@ -39,6 +39,14 @@ Web / Desktop / Android
 | `sounder-desktop/` | `sounder-desktop`, `sounder.apk` | Wails v3 shell for desktop and Android |
 | `sounder-verify/` | `v2-isolation`, `v3-recovery` | Verification tools for the architecture assumptions |
 
+## Deployment modes
+
+| Mode | Entry | Notes |
+|---|---|---|
+| Development | `docker-compose.yml` | Builds images from source |
+| Production (Compose) | `docker-compose.prod.yml` | Pulls registry images, fail-fast on missing secrets, per-service limits |
+| Kubernetes | `deploy/k8s/` | Kustomize; StatefulSet worker, NetworkPolicy, HPA |
+
 ## Quick start
 
 ```bash
