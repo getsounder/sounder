@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sounder-worker
+  namespace: sounder
+spec:
+  clusterIP: None
+  selector:
+    app: sounder-worker
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sounder-worker
+  namespace: sounder
+spec:
+  serviceName: sounder-worker
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sounder-worker
+  template:
+    metadata:
+      labels:
+        app: sounder-worker
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 300
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/getsounder/sounder-worker:dev
+          args:
+            - "-addr=0.0.0.0:8080"
+            - "-data=/data"
+            - "-max=$(WORKER_MAX)"
+            - "-model=$(MODEL)"
+            - "-gateway=$(TUNNEL_URL)"
+            - "-gateway-token=$(SOUNDER_TOKEN)"
+            - "-worker-kind=cloud"
+            - "-worker-id=$(POD_NAME)"
+          envFrom:
+            - configMapRef: { name: sounder-config }
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: SOUNDER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: sounder-secrets, key: SOUNDER_TOKEN }
+            - name: MINIMAX_CN_API_KEY
+              valueFrom:
+                secretKeyRef: { name: sounder-secrets, key: MINIMAX_CN_API_KEY, optional: true }
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { cpu: "4", memory: "4Gi" }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 6
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: workspace, mountPath: /workspace }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sounder-worker
+  namespace: sounder
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: sounder-worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

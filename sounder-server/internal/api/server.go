@@ -52,6 +52,11 @@ func (s *Server) auth(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 探针不应需要凭证。
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer "+s.token {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return

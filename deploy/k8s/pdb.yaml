@@ -1,0 +1,19 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sounder-server
+  namespace: sounder
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: sounder-server }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sounder-gateway
+  namespace: sounder
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: sounder-gateway }

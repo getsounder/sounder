@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sounder-config
+  namespace: sounder
+data:
+  MODEL: "minimax-cn/MiniMax-M3"
+  WORKER_MAX: "4"
+  GATEWAY_URL: "http://sounder-gateway:9090"
+  TUNNEL_URL: "ws://sounder-gateway:9090/v1/tunnel"
+  POSTGRES_HOST: "sounder-postgres"
+  POSTGRES_DB: "sounder"
+  POSTGRES_USER: "sounder"
+  REDIS_ADDR: "sounder-redis:6379"
+  MINIO_ENDPOINT: "http://sounder-minio:9000"
+---
+# 示例值，不要提交真实凭证。
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sounder-secrets
+  namespace: sounder
+type: Opaque
+stringData:
+  SOUNDER_TOKEN: "change-me-before-deploy"
+  POSTGRES_PASSWORD: "sounder"
+  MINIO_ROOT_USER: "sounder"
+  MINIO_ROOT_PASSWORD: "minioadmin"
+  MINIMAX_CN_API_KEY: ""

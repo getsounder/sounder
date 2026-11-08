@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sounder-web
+  namespace: sounder
+spec:
+  selector:
+    app: sounder-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sounder-web
+  namespace: sounder
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sounder-web
+  template:
+    metadata:
+      labels:
+        app: sounder-web
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: web
+          image: ghcr.io/getsounder/sounder-web:dev
+          ports:
+            - containerPort: 80
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits: { cpu: "200m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 2
+            periodSeconds: 5
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sounder-web
+  namespace: sounder
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: sounder.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sounder-web
+                port:
+                  number: 80
+  tls:
+    - hosts: ["sounder.example.com"]
+      secretName: sounder-tls
