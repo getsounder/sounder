@@ -133,4 +133,4 @@ PiG does not sandbox model output. Sounder adds a policy layer in front of every
 Early. The core loop works end to end, but the project is pre-1.0 and PiG itself is still 0.x.
 Pin the PiG commit in `go.sum` and expect breaking changes when upgrading.
 
-License: TBD.
+License: [MIT](LICENSE).

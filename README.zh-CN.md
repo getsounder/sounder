@@ -130,4 +130,4 @@ PiG 不对模型输出做沙箱。Sounder 在每个工具调用前加了一层�
 早期项目。核心链路已经端到端跑通，但还没到 1.0，PiG 本身也仍是 0.x。
 升级时请锁定 `go.sum` 里的 PiG commit，并预期有破坏性变更。
 
-License: TBD.
+License: [MIT](LICENSE).
