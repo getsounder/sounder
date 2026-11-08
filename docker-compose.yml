@@ -1,0 +1,178 @@
+name: sounder
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  sounder-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sounder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sounder}
+      POSTGRES_DB: sounder
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sounder -d sounder"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  sounder-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  sounder-minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-sounder}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  sounder-minio-init:
+    image: minio/mc:latest
+    depends_on:
+      sounder-minio:
+        condition: service_healthy
+    environment:
+      MINIO_USER: ${MINIO_USER:-sounder}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:-minioadmin}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://sounder-minio:9000 $${MINIO_USER} $${MINIO_PASSWORD} &&
+      mc mb -p local/sounder || true &&
+      mc anonymous set none local/sounder || true &&
+      echo 'bucket ready: sounder'
+      "
+    logging: *logging
+
+  sounder-gateway:
+    build:
+      context: ./sounder-gateway
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    command:
+      - "-addr=0.0.0.0:9090"
+      - "-token=${SOUNDER_TOKEN:-dev-token}"
+      - "-stale=90s"
+    ports:
+      - "${GATEWAY_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9090/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  sounder-server:
+    build:
+      context: ./sounder-server
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    command:
+      - "-addr=0.0.0.0:8000"
+      - "-gateway=http://sounder-gateway:9090"
+      - "-gateway-token=${SOUNDER_TOKEN:-dev-token}"
+      - "-token=${SOUNDER_TOKEN:-dev-token}"
+      - "-store=postgres"
+      - "-dsn=postgres://sounder:${POSTGRES_PASSWORD:-sounder}@sounder-postgres:5432/sounder?sslmode=disable"
+    ports:
+      - "${SERVER_PORT:-8000}:8000"
+    depends_on:
+      sounder-gateway:
+        condition: service_healthy
+      sounder-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  sounder-web:
+    build:
+      context: ./sounder-web
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      sounder-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
+  sounder-worker:
+    build:
+      context: ./sounder-worker
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    command:
+      - "-addr=0.0.0.0:8080"
+      - "-data=/data"
+      - "-max=${WORKER_MAX:-4}"
+      - "-model=${MODEL:-openai/gpt-5}"
+      - "-gateway=ws://sounder-gateway:9090/v1/tunnel"
+      - "-gateway-token=${SOUNDER_TOKEN:-dev-token}"
+      - "-worker-kind=${WORKER_KIND:-cloud}"
+      - "-worker-id=${WORKER_ID:-worker-local-1}"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MINIMAX_CN_API_KEY: ${MINIMAX_CN_API_KEY:-}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+    ports:
+      - "${WORKER_PORT:-8080}:8080"
+    volumes:
+      - workerdata:/data
+      - ./workspace:/workspace
+    depends_on:
+      sounder-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    logging: *logging
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  workerdata:

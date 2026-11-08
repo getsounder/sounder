@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sounder</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --line: #2a2f3a;
+    --fg: #e6e8ee; --muted: #8b93a7; --accent: #4f8cff; --ok: #3ecf8e;
+    --warn: #f5a524; --err: #f45b69;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  .app { display: grid; grid-template-rows: 48px 1fr; height: 100%; }
+  header { display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .brand { font-weight: 700; letter-spacing: .02em; }
+  .brand span { color: var(--accent); }
+  header input { flex: 1; max-width: 320px; }
+  input, textarea, button { font: inherit; color: var(--fg); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none; }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  button { cursor: pointer; background: var(--panel2); }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
+  aside { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  .aside-head { padding: 10px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
+  .aside-head button { flex: 1; }
+  #sessions { list-style: none; margin: 0; padding: 6px; overflow: auto; }
+  #sessions li { padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+  #sessions li:hover { background: var(--panel2); }
+  #sessions li.active { background: var(--panel2); color: var(--fg); }
+  #sessions li .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin-top: 6px; flex: none; }
+  #sessions li .dot.running { background: var(--warn); }
+  #sessions li .dot.idle { background: var(--ok); }
+  #sessions li .dot.failed { background: var(--err); }
+  .chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+  #log { overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 860px; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; }
+  .msg.user { align-self: flex-end; background: #1b2740; border-color: #2a3d63; }
+  .msg.assistant { align-self: flex-start; }
+  .msg .meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .tool { align-self: stretch; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px 10px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); }
+  .tool b { color: var(--fg); font-weight: 600; }
+  .event { align-self: stretch; font-size: 11px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; }
+  .error { align-self: stretch; padding: 10px 12px; border-radius: 8px; background: #3a1a1f; border: 1px solid #5c2730; color: #ffb3ba; }
+  .approval { align-self: stretch; padding: 12px; border-radius: 10px; background: #2a2418; border: 1px solid #5c4a20; }
+  .approval h4 { margin: 0 0 6px; font-size: 13px; color: var(--warn); }
+  .approval pre { margin: 6px 0 10px; padding: 8px; background: #16130c; border-radius: 6px; overflow: auto; font-size: 11px; color: #d8c9a0; }
+  .approval .row { display: flex; gap: 8px; }
+  form.composer { display: flex; gap: 10px; padding: 12px; border-top: 1px solid var(--line); background: var(--panel); }
+  form.composer textarea { flex: 1; resize: none; height: 64px; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status i.on { background: var(--ok); }
+  @media (max-width: 720px) {
+    main { grid-template-columns: 1fr; }
+    aside { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">Sound<span>er</span></div>
+    <input id="token" type="password" placeholder="访问 token（保存到 localStorage）">
+    <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
+  </header>
+  <main>
+    <aside>
+      <div class="aside-head">
+        <button id="newBtn" class="primary">新建会话</button>
+        <button id="refreshBtn" title="刷新">↻</button>
+      </div>
+      <ul id="sessions"></ul>
+    </aside>
+    <section class="chat">
+      <div id="log"><div class="empty">先新建一个会话，然后发送任务。</div></div>
+      <form class="composer" id="composer">
+        <textarea id="prompt" placeholder="描述你要 Agent 做的事，Enter 发送，Shift+Enter 换行" disabled></textarea>
+        <button class="primary" id="sendBtn" disabled>发送</button>
+      </form>
+    </section>
+  </main>
+</div>
+<script>
+
+const $ = (id) => document.getElementById(id);
+// Desktop（Wails）通过 query 注入本地 Worker 地址；Web 端同源，两者代码一致。
+const params = new URLSearchParams(location.search);
+const apiBase = params.get("api") || "";
+const state = {
+  token: params.get("token") || localStorage.getItem("sounder.token") || "",
+  sessions: [],
+  current: null,
+  abort: null,
+  lastSeq: 0,
+  bubble: null,
+};
+
+$("token").value = state.token;
+$("token").addEventListener("change", (e) => {
+  state.token = e.target.value.trim();
+  localStorage.setItem("sounder.token", state.token);
+  loadSessions().catch(showError);
+});
+
+async function api(path, opts = {}) {
+  const res = await fetch(apiBase + path, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(state.token ? { Authorization: "Bearer " + state.token } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    let msg = res.status + " " + res.statusText;
+    try { msg = (await res.text()) || msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("json") ? res.json() : res.text();
+}
+
+function setConn(on, text) {
+  $("conn").className = on ? "on" : "";
+  $("connText").textContent = text || (on ? "已连接" : "未连接");
+}
+
+function logEl() { return $("log"); }
+
+function clearLog() {
+  logEl().innerHTML = "";
+  state.bubble = null;
+}
+
+async function loadHistory(sessionId) {
+  const data = await api(`/v1/sessions/${sessionId}/history?limit=100`);
+  const msgs = data.messages || [];
+  if (!msgs.length) return;
+  addEl("event", "历史记录（来自 Session JSONL）");
+  for (const m of msgs) {
+    if (m.role === "user") {
+      addEl("msg user", `<div class="meta">you</div><div class="body">${esc(m.text || "")}</div>`);
+    } else if (m.role === "assistant") {
+      addEl("msg assistant", `<div class="meta">assistant</div><div class="body">${esc(m.text || "")}</div>`);
+    } else if (m.role === "toolResult") {
+      addEl("tool", `<b>${esc(m.tool || "tool")}</b> ${m.isError ? "失败" : "完成"}${m.text ? " · " + esc(m.text.slice(0, 300)) : ""}`);
+    }
+  }
+}
+
+function addEl(cls, html) {
+  const el = document.createElement("div");
+  el.className = cls;
+  if (html) el.innerHTML = html;
+  logEl().appendChild(el);
+  logEl().scrollTop = logEl().scrollHeight;
+  return el;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function showError(err) {
+  addEl("error", esc(err.message || err));
+}
+
+async function loadSessions() {
+  const data = await api("/v1/sessions");
+  state.sessions = data.sessions || [];
+  renderSessions();
+}
+
+function renderSessions() {
+  const ul = $("sessions");
+  ul.innerHTML = "";
+  if (!state.sessions.length) {
+    ul.innerHTML = '<li style="cursor:default">暂无会话</li>';
+    return;
+  }
+  for (const s of state.sessions) {
+    const li = document.createElement("li");
+    li.className = state.current && state.current.id === s.id ? "active" : "";
+    li.innerHTML = `<span>${esc(s.id.slice(0, 12))}<br><small>${esc(s.model || "")}</small></span><i class="dot ${esc(s.state)}"></i>`;
+    li.onclick = () => selectSession(s);
+    ul.appendChild(li);
+  }
+}
+
+async function createSession() {
+  $("newBtn").disabled = true;
+  try {
+    const s = await api("/v1/sessions", { method: "POST", body: JSON.stringify({}) });
+    state.sessions.unshift(s);
+    renderSessions();
+    await selectSession(s);
+  } catch (e) {
+    showError(e);
+  } finally {
+    $("newBtn").disabled = false;
+  }
+}
+
+async function selectSession(s) {
+  state.current = s;
+  state.lastSeq = 0;
+  clearLog();
+  renderSessions();
+  $("prompt").disabled = false;
+  $("sendBtn").disabled = false;
+  try { await loadHistory(s.id); } catch (_) { /* 历史失败不阻塞实时流 */ }
+  openStream(s.id).catch((e) => { if (e.name !== "AbortError") showError(e); });
+}
+
+async function openStream(sessionId) {
+  if (state.abort) state.abort.abort();
+  const ctrl = new AbortController();
+  state.abort = ctrl;
+  setConn(false, "连接中");
+
+  const res = await fetch(`${apiBase}/v1/sessions/${sessionId}/events?after=${state.lastSeq}`, {
+    headers: state.token ? { Authorization: "Bearer " + state.token } : {},
+    signal: ctrl.signal,
+  });
+  if (!res.ok || !res.body) throw new Error("事件流失败: " + res.status);
+  setConn(true, "已连接");
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      handleChunk(buf.slice(0, i));
+      buf = buf.slice(i + 2);
+    }
+  }
+  setConn(false, "已断开");
+}
+
+function handleChunk(chunk) {
+  let seq = 0;
+  let data = "";
+  for (const line of chunk.split("\n")) {
+    if (line.startsWith("id:")) seq = Number(line.slice(3).trim()) || 0;
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  if (!data) return;
+  if (seq && seq <= state.lastSeq) return;
+  if (seq) state.lastSeq = seq;
+  let evt;
+  try { evt = JSON.parse(data); } catch (_) { return; }
+  renderEvent(evt);
+}
+
+function renderEvent(evt) {
+  const type = evt.type || "";
+  const p = evt.payload || {};
+
+  if (type === "message.start") {
+    state.bubble = addEl("msg assistant", '<div class="meta">assistant</div><div class="body">生成中…</div>');
+    return;
+  }
+  if (type === "message.delta") {
+    if (!state.bubble) state.bubble = addEl("msg assistant", '<div class="meta">assistant</div><div class="body"></div>');
+    const body = state.bubble.querySelector(".body");
+    if (p.text) {
+      const cur = body.textContent === "生成中…" ? "" : body.textContent;
+      body.textContent = p.text.startsWith(cur) ? p.text : cur + p.text;
+    }
+    return;
+  }
+  if (type === "message.end") {
+    if (state.bubble && p.text) {
+      state.bubble.querySelector(".body").textContent = p.text;
+    }
+    state.bubble = null;
+    return;
+  }
+  if (type === "tool.start") {
+    addEl("tool", `<b>${esc(p.tool || p.name || "tool")}</b> 开始执行`);
+    return;
+  }
+  if (type === "tool.end") {
+    addEl("tool", `<b>${esc(p.tool || p.name || "tool")}</b> 结束${p.exitCode !== undefined ? " · exit " + p.exitCode : ""}`);
+    return;
+  }
+  if (type === "session.settled") {
+    addEl("event", "本轮结束");
+    if (state.current) { state.current.state = "idle"; renderSessions(); }
+    $("sendBtn").disabled = false;
+    return;
+  }
+  if (type === "approval.requested") {
+    renderApproval(p);
+    return;
+  }
+  if (type === "error") {
+    addEl("error", esc(p.message || "未知错误"));
+    return;
+  }
+  addEl("event", esc(type) + (p && Object.keys(p).length ? " · " + esc(JSON.stringify(p).slice(0, 160)) : ""));
+}
+
+function renderApproval(p) {
+  const box = document.createElement("div");
+  box.className = "approval";
+  box.innerHTML = `
+    <h4>需要审批 · ${esc(p.tool || "")} (${esc(p.level || "")})</h4>
+    ${p.reason ? `<div style="font-size:12px;color:#d8c9a0">${esc(p.reason)}</div>` : ""}
+    <pre>${esc(JSON.stringify(p.args || {}, null, 2))}</pre>
+    <div class="row">
+      <button class="primary" data-allow="1">允许</button>
+      <button data-allow="0">拒绝</button>
+    </div>`;
+  box.querySelectorAll("button").forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        await api(`/v1/approvals/${encodeURIComponent(p.approvalId)}?workerId=${encodeURIComponent(state.current.workerId)}`, {
+          method: "POST",
+          body: JSON.stringify({ allow: btn.dataset.allow === "1" }),
+        });
+        box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        box.style.opacity = ".6";
+      } catch (e) { showError(e); }
+    };
+  });
+  logEl().appendChild(box);
+  logEl().scrollTop = logEl().scrollHeight;
+}
+
+async function sendPrompt(e) {
+  e.preventDefault();
+  const text = $("prompt").value.trim();
+  if (!text || !state.current) return;
+  $("prompt").value = "";
+  $("sendBtn").disabled = true;
+  addEl("msg user", `<div class="meta">you</div><div class="body">${esc(text)}</div>`);
+  try {
+    await api(`/v1/sessions/${state.current.id}/prompts`, {
+      method: "POST",
+      body: JSON.stringify({ message: text }),
+    });
+  } catch (err) {
+    showError(err);
+    $("sendBtn").disabled = false;
+  }
+}
+
+$("newBtn").onclick = createSession;
+$("refreshBtn").onclick = () => loadSessions().catch(showError);
+$("composer").onsubmit = sendPrompt;
+$("prompt").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); }
+});
+
+loadSessions().catch(showError);
+</script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  .wrap { font-family: var(--font-sans); color: var(--foreground); display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+  .layer { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: start; }
+  .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-foreground); padding-top: 12px; line-height: 1.3; }
+  .box { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { flex: 1 1 150px; min-width: 0; border: 1px solid var(--border); background: var(--secondary); border-radius: calc(var(--radius) - 2px); padding: 8px 10px; }
+  .chip b { display: block; font-size: 13px; font-weight: 600; }
+  .chip span { display: block; font-size: 11px; color: var(--muted-foreground); margin-top: 2px; line-height: 1.35; }
+  .accent { border-color: color-mix(in oklab, var(--primary) 45%, var(--border)); background: color-mix(in oklab, var(--primary) 9%, var(--card)); }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .step { font-size: 12px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); white-space: nowrap; }
+  .arrow { color: var(--muted-foreground); font-size: 12px; }
+  .note { font-size: 11.5px; color: var(--muted-foreground); line-height: 1.5; padding-left: 102px; }
+  .note b { color: var(--foreground); font-weight: 600; }
+  .connector { height: 12px; display: grid; grid-template-columns: 92px 1fr; }
+  .connector i { grid-column: 2; justify-self: center; width: 1px; background: var(--border); }
+  @media (max-width: 520px) {
+    .layer { grid-template-columns: 1fr; }
+    .label { padding-top: 0; }
+    .note { padding-left: 0; }
+    .connector { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="layer">
+    <div class="label">Clients</div>
+    <div class="row">
+      <div class="chip"><b>Web</b><span>Next.js · 全功能工作台 · WSS</span></div>
+      <div class="chip"><b>Desktop</b><span>Tauri + Go sidecar · 本地仓库 · 离线</span></div>
+      <div class="chip"><b>Mobile</b><span>React Native · 审批 / 查看 / 轻对话</span></div>
+    </div>
+  </div>
+
+  <div class="connector"><i></i></div>
+
+  <div class="layer">
+    <div class="label">Edge</div>
+    <div class="box row">
+      <div class="chip"><b>API Gateway / BFF</b><span>租户路由 · 限流 · 审计 · 鉴权</span></div>
+      <div class="chip"><b>Realtime Gateway</b><span>WSS 升级 · seq 重放 · 事件扇出</span></div>
+      <div class="chip"><b>OIDC</b><span>登录 · 会话票据 · 设备授权</span></div>
+    </div>
+  </div>
+
+  <div class="connector"><i></i></div>
+
+  <div class="layer">
+    <div class="label">Control<br>Plane</div>
+    <div class="box row">
+      <div class="chip"><b>Session Service</b><span>状态机 · 生命周期 · 断线游标</span></div>
+      <div class="chip"><b>Scheduler</b><span>Pod 申请 · warm pool · 回收</span></div>
+      <div class="chip"><b>Workspace</b><span>clone · 快照 · diff · 产物</span></div>
+      <div class="chip"><b>Model Gateway</b><span>统一 key · 路由 · token 计量</span></div>
+      <div class="chip"><b>Piglet Registry</b><span>YAML · ed25519 签名 · 灰度</span></div>
+      <div class="chip"><b>Policy</b><span>工具白名单 · 审批 · 路径/网络</span></div>
+      <div class="chip"><b>Metering</b><span>token · CPU 秒 · 存储计费</span></div>
+    </div>
+  </div>
+
+  <div class="connector"><i></i></div>
+
+  <div class="layer">
+    <div class="label">Runtime<br>Plane</div>
+    <div class="box accent">
+      <div style="font-size:12.5px;font-weight:600;margin-bottom:6px;">Session Worker（Go）· 一个 Pod = 一个会话边界</div>
+      <div class="flow">
+        <span class="step">CreateAgentSessionServices</span><span class="arrow">→</span>
+        <span class="step">NewRuntime</span><span class="arrow">→</span>
+        <span class="step">BuildModel</span><span class="arrow">→</span>
+        <span class="step">runtime.New</span><span class="arrow">→</span>
+        <span class="step">Subscribe</span><span class="arrow">→</span>
+        <span class="step">Send(ctx)</span>
+      </div>
+      <div style="font-size:11.5px;color:var(--muted-foreground);margin-top:8px;line-height:1.45;">
+        独立 CWD / AgentDir · 每会话一个 Runtime（持有 extension 进程与取消状态）· Send 阻塞至 AgentSettledEvent
+      </div>
+    </div>
+  </div>
+
+  <div class="connector"><i></i></div>
+
+  <div class="layer">
+    <div class="label">Data<br>Plane</div>
+    <div class="box row">
+      <div class="chip"><b>PostgreSQL</b><span>租户 / 会话 / 审计元数据</span></div>
+      <div class="chip"><b>Redis</b><span>活跃态 · 队列 · 限流</span></div>
+      <div class="chip"><b>Object Store</b><span>Session JSONL · 产物 · 快照</span></div>
+      <div class="chip"><b>ClickHouse / Loki</b><span>事件流 · 审计 · 检索</span></div>
+      <div class="chip"><b>OpenTelemetry</b><span>链路 · 指标 · 告警</span></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>两条硬约束：</b>① Session JSONL 是唯一真源，实时事件只是投影，断线/迁移都从日志重建；② PiG 不自带沙箱，SDK 嵌入后工具就在 Worker 进程权限下执行，必须容器隔离 + 非 root + egress 白名单。
+  </div>
+
+</div>
+</body>
+</html>

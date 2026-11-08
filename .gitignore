@@ -1,0 +1,33 @@
+# secrets
+.env
+.env.local
+.env.*.local
+
+# runtime data / logs
+workspace/
+*.log
+.DS_Store
+
+# build outputs
+bin/
+*.apk
+*.app
+*.exe
+*.dmg
+*.deb
+*.AppImage
+
+# Go binaries
+sounder-worker/sounder-worker
+sounder-gateway/sounder-gateway
+sounder-server/sounder-server
+
+# Node
+node_modules/
+
+# Wails / Android build artifacts
+sounder-desktop/build/android/app/build/
+sounder-desktop/build/android/app/src/main/jniLibs/
+sounder-desktop/build/android/.gradle/
+sounder-desktop/build/android/build/
+sounder-desktop/build/bin/
