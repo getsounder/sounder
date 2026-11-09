@@ -16,6 +16,16 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
+ * OpenPath 在系统文件管理器里定位一个文件（界面里的文件路径可点击）。
+ * 只接受已存在的路径，避免把任意字符串交给 shell。
+ * @param {string} path
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenPath(path) {
+    return $Call.ByID(2878784869, path);
+}
+
+/**
  * @param {string} workspace
  * @returns {$CancellablePromise<$models.Endpoint>}
  */

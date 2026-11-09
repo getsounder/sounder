@@ -113,6 +113,13 @@
   }
   #sessions li:hover .s-del, #sessions li.active .s-del { opacity: 1; }
   .s-del:hover { background: #f45b6920; color: var(--err); border-color: #5c2730; }
+  .aside-search { padding: 0 12px 8px; }
+  .aside-search input { width: 100%; font-size: 12.5px; padding: 6px 10px; }
+  #sessions .group-label {
+    padding: 10px 12px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted2); cursor: default;
+  }
+  #sessions .group-label:hover { background: transparent; }
   .chat {
     display: grid; grid-template-rows: 1fr auto; min-height: 0;
     background:
@@ -139,7 +146,30 @@
     background: var(--panel); border: 1px solid var(--line);
     white-space: pre-wrap; word-break: break-word;
     box-shadow: inset 0 1px 0 #ffffff05;
+    position: relative;
   }
+  .msg-actions {
+    position: absolute; top: -10px; right: 10px; display: flex; gap: 4px;
+    opacity: 0; transition: opacity .12s;
+  }
+  .msg:hover .msg-actions { opacity: 1; }
+  .msg-actions button {
+    font-size: 11px; padding: 2px 8px; border-radius: 7px;
+    background: var(--panel2); border-color: var(--line-strong); color: var(--muted);
+  }
+  .msg-actions button:hover { color: var(--fg); }
+  .msg .body.md a.file {
+    color: var(--accent2); text-decoration: underline dotted;
+    text-underline-offset: 2px; cursor: pointer;
+  }
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 12px);
+    z-index: 60; padding: 8px 14px; border-radius: 999px; font-size: 12.5px;
+    background: #10151f; border: 1px solid var(--line-strong); color: var(--fg);
+    box-shadow: 0 10px 30px #0009; opacity: 0; pointer-events: none;
+    transition: opacity .18s, transform .18s;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
   .msg.user { align-self: flex-end; background: linear-gradient(180deg, #2b4a86, #234079); border-color: #33599f; border-bottom-right-radius: 5px; }
   .msg.assistant { align-self: flex-start; border-top-left-radius: 5px; }
   .msg .meta {
@@ -259,7 +289,7 @@
     .kbd-hints { display: none; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-DmB3M1Co.js"></script>
+  <script type="module" crossorigin src="/assets/index-C7BW0ngm.js"></script>
 </head>
 <body>
 <div class="app">
@@ -267,6 +297,7 @@
     <button id="menuBtn" title="会话列表" aria-label="会话列表">☰</button>
     <div class="brand"><span class="logo">S</span><span class="brand-name">Sound<em>er</em></span></div>
     <button id="userChip" hidden title="账号">账号</button>
+    <button id="settingsBtn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
     <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
   </header>
   <div id="setup" hidden>
@@ -280,6 +311,7 @@
         <button id="refreshBtn" class="icon-btn" title="刷新" aria-label="刷新">↻</button>
       </div>
       <div class="aside-label"><span>会话</span><span id="sessionCount"></span></div>
+      <div class="aside-search"><input id="search" type="search" placeholder="搜索会话" autocomplete="off"></div>
       <ul id="sessions"></ul>
     </aside>
     <section class="chat">
@@ -350,6 +382,29 @@
   </div>
 </div>
 
+<div class="modal" id="settingsModal" hidden>
+  <div class="card">
+    <h2>设置</h2>
+    <p class="sub">这里的值用于新建会话，保存在本机。</p>
+    <div class="field">
+      <label>默认模型</label>
+      <input id="setModel" placeholder="provider/model，如 minimax-cn/MiniMax-M3" autocapitalize="off" autocorrect="off">
+    </div>
+    <div class="field">
+      <label>工作区（留空则用 Worker 默认目录）</label>
+      <input id="setWorkspace" placeholder="/Users/me/code/project" autocapitalize="off" autocorrect="off">
+    </div>
+    <div class="field">
+      <label>并发上限</label>
+      <div class="hint" id="setCapacity">—</div>
+    </div>
+    <div class="rowbtns" style="margin-top:16px">
+      <button id="resetSettings">恢复默认</button>
+      <button class="primary" id="saveSettings">保存</button>
+    </div>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
 <div class="modal" id="accountModal" hidden>
   <div class="card">
     <h2 id="accountName">账号</h2>
