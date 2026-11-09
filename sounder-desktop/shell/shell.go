@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -67,6 +68,28 @@ func (s *Service) WorkerEndpoint() Endpoint {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ep
+}
+
+// OpenPath 在系统文件管理器里定位一个文件（界面里的文件路径可点击）。
+// 只接受已存在的路径，避免把任意字符串交给 shell。
+func (s *Service) OpenPath(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("empty path")
+	}
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", "-R", path)
+	case "windows":
+		cmd = exec.Command("explorer", "/select,"+path)
+	default:
+		cmd = exec.Command("xdg-open", filepath.Dir(path))
+	}
+	return cmd.Start()
 }
 
 func (s *Service) StartWorker(workspace string) (Endpoint, error) {

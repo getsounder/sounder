@@ -113,6 +113,13 @@
   }
   #sessions li:hover .s-del, #sessions li.active .s-del { opacity: 1; }
   .s-del:hover { background: #f45b6920; color: var(--err); border-color: #5c2730; }
+  .aside-search { padding: 0 12px 8px; }
+  .aside-search input { width: 100%; font-size: 12.5px; padding: 6px 10px; }
+  #sessions .group-label {
+    padding: 10px 12px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted2); cursor: default;
+  }
+  #sessions .group-label:hover { background: transparent; }
   .chat {
     display: grid; grid-template-rows: 1fr auto; min-height: 0;
     background:
@@ -139,7 +146,30 @@
     background: var(--panel); border: 1px solid var(--line);
     white-space: pre-wrap; word-break: break-word;
     box-shadow: inset 0 1px 0 #ffffff05;
+    position: relative;
   }
+  .msg-actions {
+    position: absolute; top: -10px; right: 10px; display: flex; gap: 4px;
+    opacity: 0; transition: opacity .12s;
+  }
+  .msg:hover .msg-actions { opacity: 1; }
+  .msg-actions button {
+    font-size: 11px; padding: 2px 8px; border-radius: 7px;
+    background: var(--panel2); border-color: var(--line-strong); color: var(--muted);
+  }
+  .msg-actions button:hover { color: var(--fg); }
+  .msg .body.md a.file {
+    color: var(--accent2); text-decoration: underline dotted;
+    text-underline-offset: 2px; cursor: pointer;
+  }
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 12px);
+    z-index: 60; padding: 8px 14px; border-radius: 999px; font-size: 12.5px;
+    background: #10151f; border: 1px solid var(--line-strong); color: var(--fg);
+    box-shadow: 0 10px 30px #0009; opacity: 0; pointer-events: none;
+    transition: opacity .18s, transform .18s;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
   .msg.user { align-self: flex-end; background: linear-gradient(180deg, #2b4a86, #234079); border-color: #33599f; border-bottom-right-radius: 5px; }
   .msg.assistant { align-self: flex-start; border-top-left-radius: 5px; }
   .msg .meta {
@@ -266,6 +296,7 @@
     <button id="menuBtn" title="会话列表" aria-label="会话列表">☰</button>
     <div class="brand"><span class="logo">S</span><span class="brand-name">Sound<em>er</em></span></div>
     <button id="userChip" hidden title="账号">账号</button>
+    <button id="settingsBtn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
     <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
   </header>
   <div id="setup" hidden>
@@ -279,6 +310,7 @@
         <button id="refreshBtn" class="icon-btn" title="刷新" aria-label="刷新">↻</button>
       </div>
       <div class="aside-label"><span>会话</span><span id="sessionCount"></span></div>
+      <div class="aside-search"><input id="search" type="search" placeholder="搜索会话" autocomplete="off"></div>
       <ul id="sessions"></ul>
     </aside>
     <section class="chat">
@@ -349,6 +381,29 @@
   </div>
 </div>
 
+<div class="modal" id="settingsModal" hidden>
+  <div class="card">
+    <h2>设置</h2>
+    <p class="sub">这里的值用于新建会话，保存在本机。</p>
+    <div class="field">
+      <label>默认模型</label>
+      <input id="setModel" placeholder="provider/model，如 minimax-cn/MiniMax-M3" autocapitalize="off" autocorrect="off">
+    </div>
+    <div class="field">
+      <label>工作区（留空则用 Worker 默认目录）</label>
+      <input id="setWorkspace" placeholder="/Users/me/code/project" autocapitalize="off" autocorrect="off">
+    </div>
+    <div class="field">
+      <label>并发上限</label>
+      <div class="hint" id="setCapacity">—</div>
+    </div>
+    <div class="rowbtns" style="margin-top:16px">
+      <button id="resetSettings">恢复默认</button>
+      <button class="primary" id="saveSettings">保存</button>
+    </div>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
 <div class="modal" id="accountModal" hidden>
   <div class="card">
     <h2 id="accountName">账号</h2>
@@ -411,6 +466,8 @@ const state = {
   apiBase: trimBase(params.get("api") || localStorage.getItem("sounder.api")),
   token: params.get("token") || localStorage.getItem("sounder.token") || "",
   sessions: [],
+  capacity: 0,
+  used: 0,
   current: null,
   abort: null,
   lastSeq: 0,
@@ -781,8 +838,8 @@ async function loadHistory(sessionId) {
   addEl("event", "历史记录（来自 Session JSONL）");
   for (const m of msgs) {
     if (m.role === "user" || m.role === "assistant") {
-      const el = addEl(`msg ${m.role}`, `<div class="meta">${m.role === "user" ? "你" : "Agent"}</div><div class="body"></div>`);
-      setRichBody(el.querySelector(".body"), m.text || "");
+      if (m.role === "user") addUserMessage(m.text || "");
+      else addAssistantMessage(m.text || "");
     } else if (m.role === "toolResult") {
       addEl("tool", `<b>${esc(m.tool || "tool")}</b> ${m.isError ? "失败" : "完成"}${m.text ? " · " + esc(m.text.slice(0, 300)) : ""}`);
     }
@@ -814,8 +871,15 @@ function mdInline(s) {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
-    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(FILE_RE, (all, lead, path, line) => {
+      const label = esc(line ? `${path}:${line}` : path);
+      return `${lead}<a class="file" data-path="${path}" title="点击打开">${label}</a>`;
+    });
 }
+
+// 只认“带目录 + 已知扩展名”的路径，避免把普通英文里的点号当成文件。
+const FILE_RE = /(^|[\s(（"'`>])((?:\/|\.{1,2}\/)?(?:[\w.@+-]+\/)+[\w.@+-]+\.(?:go|ts|tsx|js|jsx|mjs|py|rs|java|kt|json|ya?ml|toml|md|markdown|html?|css|scss|sh|bash|sql|proto|c|cc|cpp|h|hpp|rb|php|swift|txt|lock))(?::(\d+))?(?::\d+)?/g;
 
 function mdBlock(seg) {
   const lines = seg.split("\n");
@@ -887,6 +951,81 @@ function setRichBody(body, text) {
   });
 }
 
+function toast(msg) {
+  const el = $("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+// 桌面端调 Go 打开文件；Web 端没有这个能力，退化成复制路径。
+async function openFilePath(path) {
+  if (isWailsShell) {
+    try {
+      await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.OpenPath", path);
+      toast("已在 Finder 中定位");
+      return;
+    } catch (e) {
+      /* 落到复制 */
+    }
+  }
+  try {
+    await copyText(path);
+    toast("路径已复制");
+  } catch (_) {
+    toast(path);
+  }
+}
+
+logEl().addEventListener("click", (e) => {
+  const link = e.target.closest("a.file");
+  if (!link) return;
+  e.preventDefault();
+  openFilePath(link.dataset.path || link.textContent);
+});
+
+function attachMsgActions(el, text, allowResend) {
+  const acts = document.createElement("div");
+  acts.className = "msg-actions";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.textContent = "复制";
+  copy.onclick = () => {
+    copyText(text)
+      .then(() => { copy.textContent = "已复制"; setTimeout(() => { copy.textContent = "复制"; }, 1200); })
+      .catch(() => toast("复制失败"));
+  };
+  acts.appendChild(copy);
+  if (allowResend) {
+    const again = document.createElement("button");
+    again.type = "button";
+    again.textContent = "重新发送";
+    again.onclick = () => {
+      promptEl.value = text;
+      resizePrompt();
+      promptEl.focus();
+    };
+    acts.appendChild(again);
+  }
+  el.appendChild(acts);
+}
+
+function addUserMessage(text) {
+  const el = addEl("msg user", '<div class="meta">你</div><div class="body"></div>');
+  el.querySelector(".body").textContent = text;
+  attachMsgActions(el, text, true);
+  return el;
+}
+
+function addAssistantMessage(text) {
+  const el = addEl("msg assistant", '<div class="meta">Agent</div><div class="body"></div>');
+  setRichBody(el.querySelector(".body"), text);
+  attachMsgActions(el, text, false);
+  return el;
+}
+
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -925,10 +1064,12 @@ function showError(err) {
 
 async function loadSessions() {
   const data = await api("/v1/sessions");
-  // 本地 Worker 返回 ID 列表，云端 server 返回对象列表，这里统一成对象。
+  // 本地 Worker 返回对象（id/model/state/title），云端 server 也返回对象；老版本可能只给 ID。
   state.sessions = (data.sessions || []).map((s) =>
     typeof s === "string" ? { id: s, model: "", state: "" } : s
   );
+  state.capacity = data.capacity || 0;
+  state.used = data.used || state.sessions.length;
   renderSessions();
   if (!state.current) {
     setConn(true, "已连接");
@@ -967,6 +1108,21 @@ function forgetTitle(id) {
   try { localStorage.setItem(TITLES_KEY, JSON.stringify(titles)); } catch (_) {}
 }
 
+function sessionTitle(s) {
+  return s.title || allTitles()[s.id] || "#" + String(s.id).slice(0, 8);
+}
+
+function groupLabel(iso, now) {
+  const t = iso ? new Date(iso) : null;
+  if (!t || Number.isNaN(t.getTime())) return "更早";
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = 24 * 60 * 60 * 1000;
+  if (t.getTime() >= startOfToday) return "今天";
+  if (t.getTime() >= startOfToday - day) return "昨天";
+  if (t.getTime() >= startOfToday - 7 * day) return "本周";
+  return "更早";
+}
+
 function renderSessions() {
   const ul = $("sessions");
   ul.innerHTML = "";
@@ -976,10 +1132,36 @@ function renderSessions() {
     ul.innerHTML = '<li class="empty-item">暂无会话</li>';
     return;
   }
-  for (const s of state.sessions) {
+
+  const q = ($("search")?.value || "").trim().toLowerCase();
+  const list = q
+    ? state.sessions.filter((s) =>
+        sessionTitle(s).toLowerCase().includes(q) || String(s.id).toLowerCase().includes(q) ||
+        String(s.model || "").toLowerCase().includes(q))
+    : state.sessions;
+
+  if (!list.length) {
+    ul.innerHTML = '<li class="empty-item">没有匹配的会话</li>';
+    return;
+  }
+
+  const now = new Date();
+  let group = "";
+  for (const s of list) {
+    // 搜索时不再分组，结果平铺更直观
+    if (!q) {
+      const g = groupLabel(s.createdAt, now);
+      if (g !== group) {
+        group = g;
+        const label = document.createElement("li");
+        label.className = "group-label";
+        label.textContent = g;
+        ul.appendChild(label);
+      }
+    }
     const li = document.createElement("li");
     li.className = state.current && state.current.id === s.id ? "active" : "";
-    const title = s.title || allTitles()[s.id] || "#" + String(s.id).slice(0, 8);
+    const title = sessionTitle(s);
     const sub = [s.model, STATE_LABELS[s.state]].filter(Boolean).join(" · ");
     li.innerHTML = `<span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${esc(sub || "本地会话")}</span></span><i class="dot ${esc(s.state || "")}"></i>`;
     li.title = s.id;
@@ -1022,7 +1204,11 @@ async function deleteSession(s) {
 async function createSession() {
   $("newBtn").disabled = true;
   try {
-    const s = await api("/v1/sessions", { method: "POST", body: JSON.stringify({}) });
+    const cfg = loadSettings();
+    const body = {};
+    if (cfg.model) body.model = cfg.model;
+    if (cfg.workspace) body.workspace = cfg.workspace;
+    const s = await api("/v1/sessions", { method: "POST", body: JSON.stringify(body) });
     state.sessions.unshift(s);
     renderSessions();
     await selectSession(s);
@@ -1142,6 +1328,7 @@ function renderEvent(evt) {
   if (type === "message.end") {
     if (state.bubble && p.text) {
       setRichBody(state.bubble.querySelector(".body"), p.text);
+      attachMsgActions(state.bubble, p.text, false);
     }
     state.bubble = null;
     return;
@@ -1208,7 +1395,7 @@ async function sendPrompt(e) {
   $("prompt").style.height = "52px";
   setRunning(true);
   rememberTitle(state.current.id, text);
-  addEl("msg user", `<div class="meta">你</div><div class="body">${esc(text)}</div>`);
+  addUserMessage(text);
   try {
     await api(`/v1/sessions/${state.current.id}/prompts`, {
       method: "POST",
@@ -1224,6 +1411,44 @@ $("newBtn").onclick = createSession;
 $("refreshBtn").onclick = () => loadSessions().catch(showError);
 $("composer").onsubmit = sendPrompt;
 $("stopBtn").onclick = cancelTurn;
+$("search").oninput = renderSessions;
+
+// ---------- 设置 ----------
+const SETTINGS_KEY = "sounder.settings";
+
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); } catch (_) { return {}; }
+}
+
+function persistSettings(cfg) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(cfg)); } catch (_) {}
+}
+
+function openSettings() {
+  const cfg = loadSettings();
+  $("setModel").value = cfg.model || "";
+  $("setWorkspace").value = cfg.workspace || "";
+  $("setCapacity").textContent = state.capacity
+    ? `当前 ${state.used || 0} / ${state.capacity}（由 Worker 启动参数决定）`
+    : "连接后显示";
+  $("settingsModal").hidden = false;
+}
+
+$("settingsBtn").onclick = openSettings;
+$("saveSettings").onclick = () => {
+  persistSettings({ model: $("setModel").value.trim(), workspace: $("setWorkspace").value.trim() });
+  $("settingsModal").hidden = true;
+  toast("设置已保存，新建会话时生效");
+};
+$("resetSettings").onclick = () => {
+  $("setModel").value = "";
+  $("setWorkspace").value = "";
+  persistSettings({});
+  toast("已恢复默认");
+};
+$("settingsModal").onclick = (e) => {
+  if (e.target === $("settingsModal")) $("settingsModal").hidden = true;
+};
 const promptEl = $("prompt");
 function resizePrompt() {
   promptEl.style.height = "auto";
