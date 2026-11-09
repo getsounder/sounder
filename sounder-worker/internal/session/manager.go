@@ -117,6 +117,28 @@ func (m *Manager) List() []string {
 	return ids
 }
 
+// Views 返回带标题/模型/状态的会话列表，按创建时间倒序。
+func (m *Manager) Views() []protocol.SessionView {
+	m.mu.RLock()
+	actors := make([]*Actor, 0, len(m.actors))
+	for _, a := range m.actors {
+		actors = append(actors, a)
+	}
+	m.mu.RUnlock()
+
+	views := make([]protocol.SessionView, 0, len(actors))
+	for _, a := range actors {
+		views = append(views, a.View())
+	}
+	sort.Slice(views, func(i, j int) bool {
+		if views[i].CreatedAt == views[j].CreatedAt {
+			return views[i].ID > views[j].ID
+		}
+		return views[i].CreatedAt > views[j].CreatedAt
+	})
+	return views
+}
+
 func (m *Manager) Delete(id string) {
 	m.mu.Lock()
 	a, ok := m.actors[id]
@@ -202,6 +224,15 @@ func (m *Manager) Restore() int {
 		if err != nil {
 			log.Printf("restore %s: %v (skipped)", id, err)
 			continue
+		}
+		// 恢复出来的会话标题取自历史里的第一条用户消息。
+		if msgs, err := ReadHistory(path, 50); err == nil {
+			for _, m := range msgs {
+				if m.Role == "user" && m.Text != "" {
+					actor.SetTitle(m.Text)
+					break
+				}
+			}
 		}
 		m.mu.Lock()
 		m.actors[id] = actor

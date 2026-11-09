@@ -38,6 +38,10 @@ type Quota struct {
 type Actor struct {
 	ID      string
 	ModelID string
+	CWD     string
+
+	createdAt time.Time
+	title     string
 
 	guard *policy.Guard
 
@@ -105,6 +109,8 @@ func New(opts Options) (*Actor, error) {
 	a := &Actor{
 		ID:         opts.ID,
 		ModelID:    opts.ModelID,
+		CWD:        opts.CWD,
+		createdAt:  time.Now(),
 		guard:      policy.NewGuard(opts.CWD, nil),
 		services:   services,
 		runtime:    rt,
@@ -230,6 +236,9 @@ func (a *Actor) Prompt(ctx context.Context, text string) error {
 		a.mu.Unlock()
 		return fmt.Errorf("session busy")
 	}
+	if a.title == "" {
+		a.title = titleFromText(text)
+	}
 	runCtx, cancel := context.WithTimeout(ctx, a.quotaTimeout())
 	a.running = true
 	a.cancel = cancel
@@ -264,6 +273,54 @@ func (a *Actor) Prompt(ctx context.Context, text string) error {
 	}()
 
 	return nil
+}
+
+// View 返回侧栏需要的展示信息，避免控制端为每个会话再拉一次历史。
+func (a *Actor) View() protocol.SessionView {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	state := "idle"
+	switch {
+	case a.closed:
+		state = "closed"
+	case a.running:
+		state = "running"
+	}
+	return protocol.SessionView{
+		ID:        a.ID,
+		Model:     a.ModelID,
+		State:     state,
+		Title:     a.title,
+		Workspace: a.CWD,
+		CreatedAt: a.createdAt.Format(time.RFC3339),
+	}
+}
+
+// SetTitle 只在标题为空时生效，用于恢复历史会话时补齐标题。
+func (a *Actor) SetTitle(text string) {
+	title := titleFromText(text)
+	if title == "" {
+		return
+	}
+	a.mu.Lock()
+	if a.title == "" {
+		a.title = title
+	}
+	a.mu.Unlock()
+}
+
+func titleFromText(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if r := []rune(line); len(r) > 40 {
+			return string(r[:40]) + "…"
+		}
+		return line
+	}
+	return ""
 }
 
 func (a *Actor) Cancel() {

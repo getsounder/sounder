@@ -40,6 +40,16 @@ type CreateSessionResponse struct {
 	CreatedAt string `json:"createdAt"`
 }
 
+// SessionView 是列表接口的展示模型：控制端不用再逐个拉历史就能渲染侧栏。
+type SessionView struct {
+	ID        string `json:"id"`
+	Model     string `json:"model,omitempty"`
+	State     string `json:"state"`
+	Title     string `json:"title,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
+	CreatedAt string `json:"createdAt,omitempty"`
+}
+
 type PromptRequest struct {
 	Message string `json:"message"`
 }
