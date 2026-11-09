@@ -1,5 +1,9 @@
 .task
 bin
 frontend/node_modules
+frontend/bindings/events
+build/android/overlay.json
+build/android/gen/
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+build/ios/xcode/
