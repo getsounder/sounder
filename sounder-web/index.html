@@ -149,6 +149,32 @@
   .msg.assistant .meta { color: var(--accent2); }
   .msg.user .meta { color: #b9ccf7; }
   .msg .body { font-size: 13.5px; line-height: 1.62; }
+  .msg .body.md { white-space: normal; }
+  .msg .body.md > :first-child { margin-top: 0; }
+  .msg .body.md > :last-child { margin-bottom: 0; }
+  .msg .body.md p { margin: 0 0 8px; }
+  .msg .body.md h4, .msg .body.md h5, .msg .body.md h6 { margin: 14px 0 6px; font-size: 13.5px; font-weight: 600; color: var(--fg); }
+  .msg .body.md strong { color: var(--fg); font-weight: 600; }
+  .msg .body.md ul, .msg .body.md ol { margin: 6px 0 8px; padding-left: 20px; }
+  .msg .body.md li { margin: 3px 0; }
+  .msg .body.md code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    background: #0c1017; border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px;
+  }
+  .msg .body.md a { color: var(--accent2); }
+  .code { margin: 8px 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #0c1017; }
+  .code-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 5px 8px 5px 12px; background: #11161f; border-bottom: 1px solid var(--line);
+    font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted2);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .code-head .copy { font-size: 11px; padding: 2px 9px; border-radius: 6px; text-transform: none; letter-spacing: 0; }
+  .code pre { margin: 0; padding: 10px 12px; overflow: auto; }
+  .code code {
+    display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px; line-height: 1.6; color: #ccd6f0; background: none; border: 0; padding: 0;
+  }
   .tool {
     align-self: stretch; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
     padding: 9px 12px; border-radius: 10px; background: #11151d; border: 1px solid var(--line);
@@ -187,7 +213,10 @@
   .composer-box textarea:focus { box-shadow: none; }
   .composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .composer-hint { font-size: 11px; color: var(--muted2); }
+  .composer-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .composer-bar button { padding: 7px 16px; border-radius: 9px; }
+  #stopBtn { background: #f45b6916; border-color: #5c2730; color: #ffb3ba; padding: 7px 14px; }
+  #stopBtn:hover:not(:disabled) { background: #f45b6926; border-color: #7a3440; color: #ffc9ce; }
   #userChip { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 10px; }
   .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: #000b; backdrop-filter: blur(4px); }
   .modal[hidden] { display: none; }
@@ -269,7 +298,10 @@
           <textarea id="prompt" rows="1" placeholder="描述你要 Agent 做的事…" disabled></textarea>
           <div class="composer-bar">
             <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
-            <button class="primary" id="sendBtn" disabled>发送</button>
+            <div class="composer-actions">
+              <button id="stopBtn" type="button" hidden>停止</button>
+              <button class="primary" id="sendBtn" disabled>发送</button>
+            </div>
           </div>
         </div>
       </form>
@@ -383,6 +415,7 @@ const state = {
   abort: null,
   lastSeq: 0,
   bubble: null,
+  running: false,
   me: null,
   providers: [],
   authTab: "login",
@@ -743,12 +776,13 @@ async function loadHistory(sessionId) {
   const data = await api(`/v1/sessions/${sessionId}/history?limit=100`);
   const msgs = data.messages || [];
   if (!msgs.length) return;
+  const firstUser = msgs.find((m) => m.role === "user" && m.text);
+  if (firstUser) rememberTitle(sessionId, firstUser.text);
   addEl("event", "历史记录（来自 Session JSONL）");
   for (const m of msgs) {
-    if (m.role === "user") {
-      addEl("msg user", `<div class="meta">你</div><div class="body">${esc(m.text || "")}</div>`);
-    } else if (m.role === "assistant") {
-      addEl("msg assistant", `<div class="meta">Agent</div><div class="body">${esc(m.text || "")}</div>`);
+    if (m.role === "user" || m.role === "assistant") {
+      const el = addEl(`msg ${m.role}`, `<div class="meta">${m.role === "user" ? "你" : "Agent"}</div><div class="body"></div>`);
+      setRichBody(el.querySelector(".body"), m.text || "");
     } else if (m.role === "toolResult") {
       addEl("tool", `<b>${esc(m.tool || "tool")}</b> ${m.isError ? "失败" : "完成"}${m.text ? " · " + esc(m.text.slice(0, 300)) : ""}`);
     }
@@ -756,12 +790,101 @@ async function loadHistory(sessionId) {
 }
 
 function addEl(cls, html) {
+  const stick = atBottom();
   const el = document.createElement("div");
   el.className = cls;
   if (html) el.innerHTML = html;
   logEl().appendChild(el);
-  logEl().scrollTop = logEl().scrollHeight;
+  if (stick) scrollToBottom();
   return el;
+}
+
+// 只吸附在底部时才自动滚动，往上翻历史时不打断阅读。
+function atBottom() {
+  const el = logEl();
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+}
+
+function scrollToBottom() {
+  logEl().scrollTop = logEl().scrollHeight;
+}
+
+function mdInline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function mdBlock(seg) {
+  const lines = seg.split("\n");
+  let html = "";
+  let list = "";
+  const closeList = () => { if (list) { html += `</${list}>`; list = ""; } };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, "");
+    if (!line.trim()) { closeList(); continue; }
+    const head = line.match(/^\s{0,3}(#{1,6})\s+(.*)$/);
+    if (head) {
+      closeList();
+      const level = Math.min(head[1].length + 3, 6);
+      html += `<h${level}>${mdInline(head[2])}</h${level}>`;
+      continue;
+    }
+    const ul = line.match(/^\s{0,3}[-*+]\s+(.*)$/);
+    const ol = line.match(/^\s{0,3}\d+[.)]\s+(.*)$/);
+    if (ul || ol) {
+      const kind = ul ? "ul" : "ol";
+      if (list !== kind) { closeList(); html += `<${kind}>`; list = kind; }
+      html += `<li>${mdInline((ul || ol)[1])}</li>`;
+      continue;
+    }
+    closeList();
+    html += `<p>${mdInline(line)}</p>`;
+  }
+  closeList();
+  return html;
+}
+
+// 极简 markdown：围栏代码块 + 标题 + 列表 + 行内代码/粗体/链接。
+function mdToHtml(src) {
+  const parts = String(src || "").split("```");
+  let out = "";
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) {
+      out += mdBlock(parts[i]);
+    } else {
+      const seg = parts[i];
+      const nl = seg.indexOf("\n");
+      const lang = nl >= 0 ? seg.slice(0, nl).trim() : "";
+      const code = nl >= 0 ? seg.slice(nl + 1) : seg;
+      out += `<div class="code"><div class="code-head"><span>${esc(lang || "code")}</span>` +
+        `<button class="copy" type="button">复制</button></div>` +
+        `<pre><code>${esc(code.replace(/\n+$/, ""))}</code></pre></div>`;
+    }
+  }
+  return out;
+}
+
+function copyText(text) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  return Promise.reject(new Error("剪贴板不可用"));
+}
+
+// 让消息体（历史/最终态）走 markdown，流式过程中仍然是纯文本。
+function setRichBody(body, text) {
+  body.innerHTML = mdToHtml(text);
+  body.classList.add("md");
+  body.querySelectorAll(".code-head .copy").forEach((btn) => {
+    btn.onclick = () => {
+      const code = btn.closest(".code").querySelector("code").textContent;
+      copyText(code).then(() => {
+        btn.textContent = "已复制";
+        setTimeout(() => { btn.textContent = "复制"; }, 1400);
+      }).catch(() => { btn.textContent = "复制失败"; });
+    };
+  });
 }
 
 function esc(s) {
@@ -809,11 +932,40 @@ async function loadSessions() {
   renderSessions();
   if (!state.current) {
     setConn(true, "已连接");
+    // 刷新/重开窗口后回到上次看的会话。
+    const lastId = localStorage.getItem(LAST_SESSION_KEY);
+    const last = lastId ? state.sessions.find((s) => s.id === lastId) : null;
+    if (last) { await selectSession(last); return; }
     renderHome();
   }
 }
 
 const STATE_LABELS = { running: "运行中", idle: "空闲", failed: "失败" };
+
+// 会话标题来自第一条用户消息，存在本地；Worker 目前只返回会话 ID。
+const TITLES_KEY = "sounder.titles";
+const LAST_SESSION_KEY = "sounder.lastSession";
+
+function allTitles() {
+  try { return JSON.parse(localStorage.getItem(TITLES_KEY) || "{}"); } catch (_) { return {}; }
+}
+
+function rememberTitle(id, text) {
+  const titles = allTitles();
+  if (titles[id]) return;
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return;
+  titles[id] = clean.length > 34 ? clean.slice(0, 34) + "…" : clean;
+  try { localStorage.setItem(TITLES_KEY, JSON.stringify(titles)); } catch (_) {}
+  renderSessions();
+}
+
+function forgetTitle(id) {
+  const titles = allTitles();
+  if (!titles[id]) return;
+  delete titles[id];
+  try { localStorage.setItem(TITLES_KEY, JSON.stringify(titles)); } catch (_) {}
+}
 
 function renderSessions() {
   const ul = $("sessions");
@@ -827,7 +979,7 @@ function renderSessions() {
   for (const s of state.sessions) {
     const li = document.createElement("li");
     li.className = state.current && state.current.id === s.id ? "active" : "";
-    const title = s.title || "#" + String(s.id).slice(0, 8);
+    const title = s.title || allTitles()[s.id] || "#" + String(s.id).slice(0, 8);
     const sub = [s.model, STATE_LABELS[s.state]].filter(Boolean).join(" · ");
     li.innerHTML = `<span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${esc(sub || "本地会话")}</span></span><i class="dot ${esc(s.state || "")}"></i>`;
     li.title = s.id;
@@ -853,13 +1005,15 @@ async function deleteSession(s) {
     return;
   }
   state.sessions = state.sessions.filter((x) => x.id !== s.id);
+  forgetTitle(s.id);
   if (wasCurrent) {
     if (state.abort) { state.abort.abort(); state.abort = null; }
     state.current = null;
     state.lastSeq = 0;
+    try { localStorage.removeItem(LAST_SESSION_KEY); } catch (_) {}
     clearLog();
+    setRunning(false);
     $("prompt").disabled = true;
-    $("sendBtn").disabled = true;
     renderHome();
   }
   renderSessions();
@@ -882,12 +1036,39 @@ async function createSession() {
 async function selectSession(s) {
   state.current = s;
   state.lastSeq = 0;
+  try { localStorage.setItem(LAST_SESSION_KEY, s.id); } catch (_) {}
   clearLog();
   renderSessions();
   $("prompt").disabled = false;
-  $("sendBtn").disabled = false;
+  setRunning(false);
   try { await loadHistory(s.id); } catch (_) { /* 历史失败不阻塞实时流 */ }
   openStream(s.id).catch((e) => { if (e.name !== "AbortError") showError(e); });
+}
+
+// 运行中显示"停止"，避免 Agent 跑偏时只能干等。
+function setRunning(on) {
+  state.running = !!on;
+  $("stopBtn").hidden = !on;
+  if (!on) $("stopBtn").textContent = "停止";
+  $("sendBtn").disabled = !!on || !state.current;
+  $("stopBtn").disabled = false;
+}
+
+async function cancelTurn() {
+  if (!state.current || !state.running) return;
+  const btn = $("stopBtn");
+  btn.disabled = true;
+  btn.textContent = "停止中…";
+  try {
+    await api(`/v1/sessions/${encodeURIComponent(state.current.id)}/cancel`, { method: "POST" });
+    // 兜底：如果服务端没有回 session.settled，2 秒后把按钮恢复，避免卡在"停止中"。
+    setTimeout(() => {
+      if (state.running) { btn.textContent = "停止"; btn.disabled = false; }
+    }, 2000);
+  } catch (e) {
+    showError(e);
+    setRunning(false);
+  }
 }
 
 async function openStream(sessionId) {
@@ -943,21 +1124,24 @@ function renderEvent(evt) {
   const p = evt.payload || {};
 
   if (type === "message.start") {
+    setRunning(true);
     state.bubble = addEl("msg assistant", '<div class="meta">Agent</div><div class="body">生成中…</div>');
     return;
   }
   if (type === "message.delta") {
+    setRunning(true);
     if (!state.bubble) state.bubble = addEl("msg assistant", '<div class="meta">Agent</div><div class="body"></div>');
     const body = state.bubble.querySelector(".body");
     if (p.text) {
       const cur = body.textContent === "生成中…" ? "" : body.textContent;
       body.textContent = p.text.startsWith(cur) ? p.text : cur + p.text;
+      if (atBottom()) scrollToBottom();
     }
     return;
   }
   if (type === "message.end") {
     if (state.bubble && p.text) {
-      state.bubble.querySelector(".body").textContent = p.text;
+      setRichBody(state.bubble.querySelector(".body"), p.text);
     }
     state.bubble = null;
     return;
@@ -973,7 +1157,7 @@ function renderEvent(evt) {
   if (type === "session.settled") {
     addEl("event", "本轮结束");
     if (state.current) { state.current.state = "idle"; renderSessions(); }
-    $("sendBtn").disabled = false;
+    setRunning(false);
     return;
   }
   if (type === "approval.requested") {
@@ -982,6 +1166,7 @@ function renderEvent(evt) {
   }
   if (type === "error") {
     addEl("error", esc(p.message || "未知错误"));
+    setRunning(false);
     return;
   }
   addEl("event", esc(type) + (p && Object.keys(p).length ? " · " + esc(JSON.stringify(p).slice(0, 160)) : ""));
@@ -1012,7 +1197,7 @@ function renderApproval(p) {
     };
   });
   logEl().appendChild(box);
-  logEl().scrollTop = logEl().scrollHeight;
+  scrollToBottom();
 }
 
 async function sendPrompt(e) {
@@ -1021,7 +1206,8 @@ async function sendPrompt(e) {
   if (!text || !state.current) return;
   $("prompt").value = "";
   $("prompt").style.height = "52px";
-  $("sendBtn").disabled = true;
+  setRunning(true);
+  rememberTitle(state.current.id, text);
   addEl("msg user", `<div class="meta">你</div><div class="body">${esc(text)}</div>`);
   try {
     await api(`/v1/sessions/${state.current.id}/prompts`, {
@@ -1030,13 +1216,14 @@ async function sendPrompt(e) {
     });
   } catch (err) {
     showError(err);
-    $("sendBtn").disabled = false;
+    setRunning(false);
   }
 }
 
 $("newBtn").onclick = createSession;
 $("refreshBtn").onclick = () => loadSessions().catch(showError);
 $("composer").onsubmit = sendPrompt;
+$("stopBtn").onclick = cancelTurn;
 const promptEl = $("prompt");
 function resizePrompt() {
   promptEl.style.height = "auto";
