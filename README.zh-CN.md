@@ -101,6 +101,33 @@ curl -s -X POST "localhost:8000/v1/approvals/<id>?workerId=w1" \
   -d '{"allow":true}'
 ```
 
+## 本地端到端验证
+
+不需要云账号也能把整条链路跑通：
+
+```bash
+docker compose up -d --build          # 8 个服务
+curl localhost:8000/healthz           # {"status":"ok"}
+curl -H "Authorization: Bearer dev-token" localhost:8000/v1/workers
+./scripts/e2e-auth.sh                 # 用户体系 e2e：74 项断言
+```
+
+认证 e2e 脚本覆盖本地注册/登录、Cookie + Bearer 会话、会话归属隔离、legacy token
+管理员可见性、会话吊销、改密/重置密码、身份解绑、CORS、OAuth 未配置行为、请求体上限
+和注册限流。脚本会在本地库创建随机邮箱的临时账号，并在结束时删除自己创建的会话。
+
+已在本机 compose 栈（PostgreSQL + Redis + MinIO + gateway + server + worker + web）上验证：
+
+- 建会话 → 发 prompt → SSE（`message.*`、`turn.end`、`error`）全链路通；
+- Worker 容器能写 `/data`（Dockerfile 里已把具名卷 chown 给 `pig`）；
+- `OPTIONS` 预检返回 `204`；白名单 Web Origin 回显并允许 Cookie，其他 Origin 返回 `*`；
+- Android APK（`sounder-desktop/bin/sounder.apk`）在模拟器里连 `http://10.0.2.2:8000`，
+  能列会话、看历史、收事件流。
+
+真实模型输出需要在 `.env` 里填真 key（`MINIMAX_CN_API_KEY`、`OPENAI_API_KEY` 或
+`ANTHROPIC_API_KEY`）。用占位 key 时本轮会以 provider `401` 结束，这是预期行为；
+上面的控制面链路仍然可用。
+
 ## 已验证的能力
 
 | 能力 | 状态 |
@@ -110,7 +137,9 @@ curl -s -X POST "localhost:8000/v1/approvals/<id>?workerId=w1" \
 | `kill -9` 后会话恢复 | ✅ |
 | 控制面 PostgreSQL 持久化 | ✅ |
 | Gateway 隧道端到端 | ✅ |
-| Android APK 构建 | ✅ |
+| Android APK 构建 + 模拟器会话流程 | ✅ |
+| 本地认证 e2e（`scripts/e2e-auth.sh`，74 项断言） | ✅ |
+| docker-compose 全栈（8 服务） | ✅ |
 | 桌面 GUI（图形会话） | ⚠️ 尚未启动验证 |
 | iOS 构建 | ⚠️ 需要完整 Xcode |
 | Kubernetes manifests | ❌ 未编写 |
@@ -127,6 +156,7 @@ PiG 不对模型输出做沙箱。Sounder 在每个工具调用前加了一层�
 ## 文档
 
 - [架构与设计说明](pig-agent-cloud-architecture.md)
+- [用户体系调研：自建账号 + Google/GitHub 登录](docs/user-system.md)
 - [Worker](sounder-worker/README.md)
 - [Gateway](sounder-gateway/README.md)
 - [控制面](sounder-server/README.md)
