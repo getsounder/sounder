@@ -22,6 +22,7 @@ tasks:
     summary: Creates a build of the application for Android
     deps:
       - task: common:go:mod:tidy
+      - task: generate:android:overlay
       - task: generate:android:bindings
         vars:
           BUILD_FLAGS:
@@ -42,6 +43,17 @@ tasks:
       BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production,android -trimpath -buildvcs=false -ldflags="-w -s"{{else}}-tags android,debug -buildvcs=false -gcflags=all="-l"{{end}}'
     env:
       PRODUCTION: '{{.PRODUCTION | default "false"}}'
+
+  generate:android:overlay:
+    summary: Generate the Go overlay that registers main() for the c-shared library
+    cmds:
+      - wails3 android overlay:gen -out build/android/overlay.json -config build/config.yml
+    sources:
+      - "**/*.go"
+      - go.mod
+      - build/config.yml
+    generates:
+      - build/android/overlay.json
 
   compile:go:shared:
     summary: Compile Go code to shared library (.so)
@@ -89,7 +101,7 @@ tasks:
         mkdir -p {{.BIN_DIR}}
         mkdir -p build/android/app/src/main/jniLibs/$JNI_DIR
 
-        go build -buildmode=c-shared {{.BUILD_FLAGS}} \
+        go build -buildmode=c-shared -overlay build/android/overlay.json {{.BUILD_FLAGS}} \
           -o build/android/app/src/main/jniLibs/$JNI_DIR/libwails.so
     vars:
       BUILD_FLAGS: '{{if eq .PRODUCTION "true"}}-tags production,android -trimpath -buildvcs=false -ldflags="-w -s"{{else}}-tags android,debug -buildvcs=false -gcflags=all="-l"{{end}}'

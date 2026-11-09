@@ -30,11 +30,12 @@ func main() {
 	mobile := runtime.GOOS == "ios" || runtime.GOOS == "android"
 
 	svc := shell.New(shell.Config{
-		Mode:    *mode,
-		Image:   *image,
-		Binary:  *workerBin,
-		Model:   *model,
+		Mode:   *mode,
+		Image:  *image,
+		Binary: *workerBin,
+		Model:  *model,
 	})
+	authSvc := shell.NewAuth()
 
 	target := "/"
 	if mobile {
@@ -60,6 +61,7 @@ func main() {
 		Description: "Sounder desktop agent",
 		Services: []application.Service{
 			application.NewService(svc),
+			application.NewService(authSvc),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -69,9 +71,21 @@ func main() {
 		},
 	})
 
+	// Cmd+Q / 关闭窗口时 app.Run 不一定返回，用 OnShutdown 兜底清理 Worker，避免残留容器占端口。
+	app.OnShutdown(func() {
+		if err := svc.StopWorker(); err != nil {
+			log.Printf("stop worker: %v", err)
+		}
+	})
+
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "Sounder",
-		URL:   target,
+		Title:            "Sounder",
+		URL:              target,
+		Width:            1080,
+		Height:           720,
+		MinWidth:         820,
+		MinHeight:        560,
+		BackgroundColour: application.NewRGBA(11, 13, 18, 255),
 	})
 
 	runErr := app.Run()

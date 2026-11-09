@@ -65,23 +65,22 @@ tasks:
 
   package:
     summary: Packages a production build of the application into a `.app` bundle
-    deps:
-      - task: build
+    cmds:
+      - task: compile:ios
         vars:
           PRODUCTION: "true"
-    cmds:
       - task: create:app:bundle
 
   create:app:bundle:
     summary: Creates an iOS `.app` bundle
     cmds:
-      - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.app"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app"
-      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/"
-      - cp build/ios/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/"
+      - rm -rf "{{.BIN_DIR}}/ios/{{.APP_NAME}}.app"
+      - mkdir -p "{{.BIN_DIR}}/ios/{{.APP_NAME}}.app"
+      - cp "{{.BIN_DIR}}/{{.APP_NAME | lower}}-ios" "{{.BIN_DIR}}/ios/{{.APP_NAME}}.app/{{.APP_NAME | lower}}"
+      - cp build/ios/Info.plist "{{.BIN_DIR}}/ios/{{.APP_NAME}}.app/"
       - |
         # Compile asset catalog and embed icons in the app bundle
-        APP_BUNDLE="{{.BIN_DIR}}/{{.APP_NAME}}.app"
+        APP_BUNDLE="{{.BIN_DIR}}/ios/{{.APP_NAME}}.app"
         AC_IN="build/ios/xcode/main/Assets.xcassets"
         if [ -d "$AC_IN" ]; then
           TMP_AC=$(mktemp -d)
@@ -103,7 +102,7 @@ tasks:
             /usr/libexec/PlistBuddy -c "Merge $APP_BUNDLE/assetcatalog_generated_info.plist" "$APP_BUNDLE/Info.plist" || true
           fi
         fi
-      - codesign --force --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - codesign --force --sign - "{{.BIN_DIR}}/ios/{{.APP_NAME}}.app"
 
   deploy-simulator:
     summary: Deploy to iOS Simulator
@@ -111,13 +110,15 @@ tasks:
     cmds:
       - xcrun simctl terminate booted {{.BUNDLE_ID}} 2>/dev/null || true
       - xcrun simctl uninstall booted {{.BUNDLE_ID}} 2>/dev/null || true
-      - xcrun simctl install booted "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - xcrun simctl install booted "{{.BIN_DIR}}/ios/{{.APP_NAME}}.app"
       - xcrun simctl launch booted {{.BUNDLE_ID}}
 
   compile:ios:
     summary: Compile the iOS executable from Go archive and main.m
     deps:
       - task: build
+        vars:
+          PRODUCTION: '{{.PRODUCTION | default "false"}}'
     vars:
       SDK_PATH:
         sh: xcrun --sdk iphonesimulator --show-sdk-path
@@ -132,9 +133,13 @@ tasks:
           -isysroot {{.SDK_PATH}} \
           -framework Foundation -framework UIKit -framework WebKit \
           -framework Security -framework CoreFoundation \
+          -framework UniformTypeIdentifiers \
+          -framework LocalAuthentication -framework UserNotifications \
+          -framework AVFoundation \
+          -framework CoreLocation -framework CoreMotion -framework SystemConfiguration \
           -lresolv \
-          -o "{{.BIN_DIR}}/{{.APP_NAME | lower}}" \
-          "$MAIN_M" "{{.BIN_DIR}}/{{.APP_NAME}}.a"
+          -o "{{.BIN_DIR}}/{{.APP_NAME | lower}}-ios" \
+          "$MAIN_M" -Wl,-force_load,"{{.BIN_DIR}}/{{.APP_NAME}}.a"
 
   generate:ios:bindings:
     internal: true
@@ -227,7 +232,7 @@ tasks:
     cmds:
       - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
-      - cp "{{.BIN_DIR}}/{{.APP_NAME | lower}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/{{.APP_NAME | lower}}"
+      - cp "{{.BIN_DIR}}/{{.APP_NAME | lower}}-ios" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/{{.APP_NAME | lower}}"
       - cp build/ios/Info.dev.plist "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Info.plist"
       - |
         # Compile asset catalog and embed icons for dev bundle

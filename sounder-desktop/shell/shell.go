@@ -143,9 +143,6 @@ func (c *ContainerRunner) Start(ctx context.Context, workspace string) (Endpoint
 		"-v", c.DataDir + ":/data",
 		"-e", "PIG_HOME=/data",
 	}
-	if c.Model != "" {
-		args = append(args, "-e", "SOUNDER_MODEL="+c.Model)
-	}
 	// 用 -e KEY（不带值）让 docker 从当前环境继承，避免 key 出现在 ps 参数里。
 	for _, k := range []string{"MINIMAX_API_KEY", "MINIMAX_CN_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
 		if os.Getenv(k) != "" {
@@ -153,7 +150,11 @@ func (c *ContainerRunner) Start(ctx context.Context, workspace string) (Endpoint
 		}
 	}
 	args = append(args, c.Image,
-		"-addr=0.0.0.0:8080", "-data=/data", "-token="+token, "-max=2")
+		"-addr=0.0.0.0:8080", "-data=/data", "-token="+token, "-max=4")
+	if c.Model != "" {
+		// Worker 只认 -model flag；仅在 docker run 的 -e 里设置环境变量不会生效。
+		args = append(args, "-model="+c.Model)
+	}
 
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 	if err != nil {
@@ -196,7 +197,7 @@ func (p *ProcessRunner) Start(ctx context.Context, workspace string) (Endpoint, 
 		return Endpoint{}, fmt.Errorf("process 模式需要 -worker 二进制路径")
 	}
 
-	args := []string{"-addr=127.0.0.1:0", "-data=" + p.DataDir, "-max=2"}
+	args := []string{"-addr=127.0.0.1:0", "-data=" + p.DataDir, "-max=4"}
 	if p.Model != "" {
 		args = append(args, "-model="+p.Model)
 	}
