@@ -4,112 +4,417 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sounder</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237FA8FF'/%3E%3Cstop offset='.52' stop-color='%234F7FF2'/%3E%3Cstop offset='1' stop-color='%238B5BFF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='15' fill='url(%23g)'/%3E%3Ctext x='32' y='46' font-family='-apple-system,Helvetica,Arial,sans-serif' font-size='42' font-weight='800' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
 <style>
   :root {
-    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --line: #2a2f3a;
-    --fg: #e6e8ee; --muted: #8b93a7; --accent: #4f8cff; --ok: #3ecf8e;
-    --warn: #f5a524; --err: #f45b69;
+    --bg: #0b0d12; --panel: #141822; --panel2: #1b202b; --panel3: #222836;
+    --line: #252b38; --line-strong: #343c4d;
+    --fg: #e8eaf1; --muted: #8b93a7; --muted2: #6b7385;
+    --accent: #5b8cff; --accent2: #7ea6ff;
+    --ok: #3ecf8e; --warn: #f5a524; --err: #f45b69;
+    --radius-sm: 9px;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-  .app { display: grid; grid-template-rows: 48px 1fr; height: 100%; }
-  header { display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .brand { font-weight: 700; letter-spacing: .02em; }
-  .brand span { color: var(--accent); }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: #5b8cff40; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #2b3243; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4357; background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  .app { display: grid; grid-template-rows: 54px auto 1fr; height: 100%; }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #151a24, #12161f);
+    -webkit-user-select: none; user-select: none;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: .01em; }
+  .brand .logo {
+    width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
+    font-size: 13px; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, #6d9bff, #3f6cff 55%, #8b5bff);
+    box-shadow: 0 4px 14px #4f8cff45, inset 0 1px 0 #ffffff33;
+  }
+  .brand-name { font-size: 15px; }
+  .brand-name em { font-style: normal; color: var(--accent2); }
+  #menuBtn { display: none; padding: 6px 10px; }
   header input { flex: 1; max-width: 320px; }
-  input, textarea, button { font: inherit; color: var(--fg); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none; }
-  input:focus, textarea:focus { border-color: var(--accent); }
+  .status {
+    margin-left: auto; display: flex; align-items: center; gap: 7px;
+    padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
+    background: #0e1219; font-size: 12px; color: var(--muted);
+    transition: border-color .2s, color .2s;
+  }
+  .status i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted2); transition: background .2s; }
+  .status i.on { background: var(--ok); box-shadow: 0 0 0 3px #3ecf8e26; }
+  .status i.pending { background: var(--warn); box-shadow: 0 0 0 3px #f5a52426; animation: pulse 1.2s ease-in-out infinite; }
+  .status.on { color: #b9f0d7; border-color: #2c5b47; }
+  .status.pending { color: #f0d3a4; border-color: #5c4a20; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  #setup { display: flex; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+  #setup[hidden] { display: none; }
+  #setup input { flex: 1; max-width: 480px; }
+  #scrim { display: none; }
+  input, textarea, button {
+    font: inherit; color: var(--fg); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 8px 10px; outline: none;
+    transition: border-color .15s, background .15s, box-shadow .15s;
+  }
+  input::placeholder, textarea::placeholder { color: var(--muted2); }
+  input:focus, textarea:focus { border-color: #4d6fbf; box-shadow: 0 0 0 3px #5b8cff1f; }
   button { cursor: pointer; background: var(--panel2); }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.primary:disabled { opacity: .5; cursor: default; }
-  main { display: grid; grid-template-columns: 260px 1fr; min-height: 0; }
+  button:hover { border-color: var(--line-strong); background: var(--panel3); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary {
+    background: linear-gradient(180deg, #6895ff, #4f7ff2); border-color: #4f7ff2; color: #fff;
+    box-shadow: 0 1px 0 #ffffff2e inset, 0 6px 16px #4f8cff26;
+  }
+  button.primary:hover:not(:disabled) { background: linear-gradient(180deg, #7aa2ff, #5b8cff); border-color: #6b97ff; }
+  button.primary:disabled { opacity: .45; box-shadow: none; }
+  .icon-btn { width: 38px; padding: 8px 0; display: grid; place-items: center; font-size: 16px; color: var(--muted); }
+  main { display: grid; grid-template-columns: 268px 1fr; min-height: 0; }
   aside { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
-  .aside-head { padding: 10px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
+  .aside-head { padding: 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
   .aside-head button { flex: 1; }
-  #sessions { list-style: none; margin: 0; padding: 6px; overflow: auto; }
-  #sessions li { padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
-  #sessions li:hover { background: var(--panel2); }
-  #sessions li.active { background: var(--panel2); color: var(--fg); }
-  #sessions li .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin-top: 6px; flex: none; }
-  #sessions li .dot.running { background: var(--warn); }
-  #sessions li .dot.idle { background: var(--ok); }
-  #sessions li .dot.failed { background: var(--err); }
-  .chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
-  #log { overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { max-width: 860px; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; }
-  .msg.user { align-self: flex-end; background: #1b2740; border-color: #2a3d63; }
-  .msg.assistant { align-self: flex-start; }
-  .msg .meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-  .tool { align-self: stretch; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px 10px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); }
+  .aside-label {
+    padding: 12px 16px 6px; font-size: 11px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted2);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #sessions { list-style: none; margin: 0; padding: 4px 8px 12px; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+  #sessions li {
+    padding: 10px 11px; border-radius: 10px; cursor: pointer; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 10px; align-items: center;
+    border: 1px solid transparent; transition: background .12s, border-color .12s;
+  }
+  #sessions li:hover { background: var(--panel2); color: var(--fg); }
+  #sessions li.active { background: var(--panel2); border-color: var(--line-strong); color: var(--fg); box-shadow: inset 2px 0 0 var(--accent); }
+  #sessions li.empty-item { cursor: default; border: 0; color: var(--muted2); justify-content: center; padding: 18px 10px; font-size: 12px; }
+  #sessions li.empty-item:hover { background: transparent; }
+  .s-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .s-title { font-size: 13px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .s-sub { font-size: 11px; color: var(--muted2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #sessions li .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted2); flex: none; }
+  #sessions li .dot.running { background: var(--warn); box-shadow: 0 0 0 3px #f5a5241f; }
+  #sessions li .dot.idle { background: var(--ok); box-shadow: 0 0 0 3px #3ecf8e1f; }
+  #sessions li .dot.failed { background: var(--err); box-shadow: 0 0 0 3px #f45b691f; }
+  .s-del {
+    flex: none; width: 22px; height: 22px; padding: 0; display: grid; place-items: center;
+    border-radius: 6px; border: 1px solid transparent; background: transparent;
+    color: var(--muted2); font-size: 16px; line-height: 1; opacity: 0;
+    transition: opacity .12s, color .12s, background .12s, border-color .12s;
+  }
+  #sessions li:hover .s-del, #sessions li.active .s-del { opacity: 1; }
+  .s-del:hover { background: #f45b6920; color: var(--err); border-color: #5c2730; }
+  .chat {
+    display: grid; grid-template-rows: 1fr auto; min-height: 0;
+    background:
+      radial-gradient(1200px 480px at 72% -12%, #5b8cff10, transparent 62%),
+      var(--bg);
+  }
+  #log { overflow: auto; padding: 26px 28px; display: flex; flex-direction: column; gap: 12px; }
+  .empty-state { margin: auto; text-align: center; max-width: 420px; padding: 40px 16px; }
+  .empty-state .empty-logo {
+    width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 16px;
+    display: grid; place-items: center; font-size: 22px; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, #6d9bff, #3f6cff 55%, #8b5bff);
+    box-shadow: 0 14px 40px #4f8cff33, inset 0 1px 0 #ffffff40;
+  }
+  .empty-state h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+  .empty-state p { margin: 0; color: var(--muted); font-size: 13px; }
+  .kbd-hints { margin-top: 22px; display: flex; gap: 16px; justify-content: center; color: var(--muted2); font-size: 11px; }
+  kbd {
+    font: inherit; font-size: 10px; padding: 2px 6px; border-radius: 5px;
+    border: 1px solid var(--line-strong); border-bottom-width: 2px; background: var(--panel2); color: var(--muted);
+  }
+  .msg {
+    max-width: min(760px, 86%); padding: 12px 14px; border-radius: 14px;
+    background: var(--panel); border: 1px solid var(--line);
+    white-space: pre-wrap; word-break: break-word;
+    box-shadow: inset 0 1px 0 #ffffff05;
+  }
+  .msg.user { align-self: flex-end; background: linear-gradient(180deg, #2b4a86, #234079); border-color: #33599f; border-bottom-right-radius: 5px; }
+  .msg.assistant { align-self: flex-start; border-top-left-radius: 5px; }
+  .msg .meta {
+    font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted2); margin-bottom: 6px;
+  }
+  .msg.assistant .meta { color: var(--accent2); }
+  .msg.user .meta { color: #b9ccf7; }
+  .msg .body { font-size: 13.5px; line-height: 1.62; }
+  .tool {
+    align-self: stretch; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    padding: 9px 12px; border-radius: 10px; background: #11151d; border: 1px solid var(--line);
+    color: var(--muted); display: flex; gap: 8px; align-items: baseline;
+  }
+  .tool::before { content: "⚙"; color: var(--accent2); }
   .tool b { color: var(--fg); font-weight: 600; }
-  .event { align-self: stretch; font-size: 11px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; }
-  .error { align-self: stretch; padding: 10px 12px; border-radius: 8px; background: #3a1a1f; border: 1px solid #5c2730; color: #ffb3ba; }
-  .approval { align-self: stretch; padding: 12px; border-radius: 10px; background: #2a2418; border: 1px solid #5c4a20; }
+  .event { align-self: stretch; font-size: 11.5px; color: var(--muted2); padding: 2px 0 2px 12px; border-left: 2px solid var(--line); }
+  .error {
+    align-self: stretch; padding: 14px 16px; border-radius: 12px;
+    background: linear-gradient(180deg, #3a1a1f, #30161b); border: 1px solid #5c2730; color: #ffc2c8;
+  }
+  .error-title { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: #ff9aa5; margin-bottom: 4px; }
+  .error-body { font-size: 13px; color: #ffd7db; }
+  .error .retry { margin-top: 10px; font-size: 12px; padding: 5px 12px; }
+  .approval {
+    align-self: stretch; padding: 14px; border-radius: 12px;
+    background: linear-gradient(180deg, #2a2418, #241f15); border: 1px solid #5c4a20;
+  }
   .approval h4 { margin: 0 0 6px; font-size: 13px; color: var(--warn); }
-  .approval pre { margin: 6px 0 10px; padding: 8px; background: #16130c; border-radius: 6px; overflow: auto; font-size: 11px; color: #d8c9a0; }
+  .approval pre { margin: 8px 0 12px; padding: 10px; background: #120f0a; border-radius: 8px; overflow: auto; font-size: 11px; color: #d8c9a0; }
   .approval .row { display: flex; gap: 8px; }
-  form.composer { display: flex; gap: 10px; padding: 12px; border-top: 1px solid var(--line); background: var(--panel); }
-  form.composer textarea { flex: 1; resize: none; height: 64px; }
-  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
-  .status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-  .status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-  .status i.on { background: var(--ok); }
+  .approval .row button { min-width: 84px; }
+  form.composer { display: flex; padding: 14px 20px 18px; border-top: 1px solid var(--line); background: linear-gradient(180deg, #11151d, #0e1219); }
+  .composer-box {
+    flex: 1; display: flex; flex-direction: column; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 8px 10px 8px 14px; transition: border-color .15s, box-shadow .15s;
+  }
+  .composer-box:focus-within { border-color: #4d6fbf; box-shadow: 0 0 0 3px #5b8cff1a; }
+  .composer-box textarea {
+    resize: none; min-height: 52px; max-height: 168px; height: 52px;
+    background: transparent; border: 0; padding: 6px 0; font-size: 14px; line-height: 1.6;
+    box-shadow: none;
+  }
+  .composer-box textarea:focus { box-shadow: none; }
+  .composer-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .composer-hint { font-size: 11px; color: var(--muted2); }
+  .composer-bar button { padding: 7px 16px; border-radius: 9px; }
+  #userChip { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 10px; }
+  .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: #000b; backdrop-filter: blur(4px); }
+  .modal[hidden] { display: none; }
+  .card { width: min(430px, 100%); max-height: 92vh; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: 0 18px 60px #0009; }
+  .card h2 { margin: 0 0 4px; font-size: 18px; }
+  .card p.sub { margin: 0 0 16px; color: var(--muted); font-size: 12px; }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input { width: 100%; }
+  .rowbtns { display: flex; gap: 8px; }
+  .rowbtns button { flex: 1; }
+  .providers { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+  .provider { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; }
+  .sep { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 14px 0; }
+  .sep::before, .sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .tabs { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+  .tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 8px; }
+  .tabs button.on { background: var(--panel2); color: var(--fg); font-weight: 600; }
+  .authmsg { font-size: 12px; margin: 8px 0; min-height: 16px; }
+  .authmsg.err { color: var(--err); }
+  .authmsg.ok { color: var(--ok); }
+  .identity { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .identity small { color: var(--muted); display: block; }
+  .link { color: var(--accent); cursor: pointer; background: none; border: 0; padding: 0; font-size: 12px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
   @media (max-width: 720px) {
-    main { grid-template-columns: 1fr; }
-    aside { display: none; }
+    header { padding: 0 10px; gap: 8px; }
+    header input { max-width: none; }
+    #menuBtn { display: inline-block; }
+    .status span { display: none; }
+    main { grid-template-columns: 1fr; position: relative; overflow: hidden; }
+    aside { position: absolute; inset: 0 auto 0 0; width: min(82%, 300px); z-index: 20; transform: translateX(-102%); transition: transform .18s ease; box-shadow: 0 0 24px #000a; }
+    body.menu-open aside { transform: translateX(0); }
+    body.menu-open #scrim { display: block; position: fixed; inset: 54px 0 0; z-index: 10; background: #0007; }
+    #setup { padding: 10px; }
+    #log { padding: 16px 14px; }
+    form.composer { padding: 10px 12px 14px; }
+    .composer-hint { display: none; }
+    .composer-bar { justify-content: flex-end; }
+    .kbd-hints { display: none; }
   }
 </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <div class="brand">Sound<span>er</span></div>
-    <input id="token" type="password" placeholder="访问 token（保存到 localStorage）">
+    <button id="menuBtn" title="会话列表" aria-label="会话列表">☰</button>
+    <div class="brand"><span class="logo">S</span><span class="brand-name">Sound<em>er</em></span></div>
+    <button id="userChip" hidden title="账号">账号</button>
     <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
   </header>
+  <div id="setup" hidden>
+    <input id="api" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="云端 API 地址，如 https://sounder.example.com">
+    <button id="applyApi" class="primary">连接</button>
+  </div>
   <main>
     <aside>
       <div class="aside-head">
-        <button id="newBtn" class="primary">新建会话</button>
-        <button id="refreshBtn" title="刷新">↻</button>
+        <button id="newBtn" class="primary">＋ 新建会话</button>
+        <button id="refreshBtn" class="icon-btn" title="刷新" aria-label="刷新">↻</button>
       </div>
+      <div class="aside-label"><span>会话</span><span id="sessionCount"></span></div>
       <ul id="sessions"></ul>
     </aside>
     <section class="chat">
-      <div id="log"><div class="empty">先新建一个会话，然后发送任务。</div></div>
+      <div id="log">
+        <div class="empty-state">
+          <div class="empty-logo">S</div>
+          <h3>开始与 Agent 协作</h3>
+          <p>新建一个会话，然后描述你想完成的任务。</p>
+          <div class="kbd-hints">
+            <span><kbd>Enter</kbd> 发送</span>
+            <span><kbd>Shift</kbd> + <kbd>Enter</kbd> 换行</span>
+          </div>
+        </div>
+      </div>
       <form class="composer" id="composer">
-        <textarea id="prompt" placeholder="描述你要 Agent 做的事，Enter 发送，Shift+Enter 换行" disabled></textarea>
-        <button class="primary" id="sendBtn" disabled>发送</button>
+        <div class="composer-box">
+          <textarea id="prompt" rows="1" placeholder="描述你要 Agent 做的事…" disabled></textarea>
+          <div class="composer-bar">
+            <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+            <button class="primary" id="sendBtn" disabled>发送</button>
+          </div>
+        </div>
       </form>
     </section>
   </main>
 </div>
-<script>
+<div id="scrim"></div>
+
+<div class="modal" id="authModal" hidden>
+  <div class="card">
+    <h2>登录 Sounder</h2>
+    <p class="sub" id="authSub">使用邮箱密码，或 Google / GitHub 账号。</p>
+    <div class="tabs" id="authTabs">
+      <button data-tab="login" class="on">登录</button>
+      <button data-tab="register">注册</button>
+    </div>
+    <div id="providers" class="providers"></div>
+    <div id="localForm">
+      <div class="field" id="nameField" hidden><label>昵称</label><input id="displayName" autocomplete="nickname"></div>
+      <div class="field"><label>邮箱</label><input id="email" type="email" autocomplete="email"></div>
+      <div class="field"><label>密码</label><input id="password" type="password" autocomplete="current-password"></div>
+      <div class="authmsg" id="authMsg"></div>
+      <div class="rowbtns"><button class="primary" id="authSubmit">登录</button></div>
+      <div style="margin-top:10px;text-align:right"><button type="button" class="link" id="forgotBtn">忘记密码？</button></div>
+    </div>
+    <div class="sep">或</div>
+    <details>
+      <summary>使用访问 token（兼容模式）</summary>
+      <div class="field" style="margin-top:10px"><input id="token" type="password" placeholder="legacy token"></div>
+      <button type="button" id="applyToken">使用 token</button>
+    </details>
+  </div>
+</div>
+
+<div class="modal" id="resetModal" hidden>
+  <div class="card">
+    <h2>重置密码</h2>
+    <p class="sub">设置一个新的密码，至少 10 位。</p>
+    <div class="field"><label>新密码</label><input id="resetPassword" type="password" autocomplete="new-password"></div>
+    <div class="authmsg" id="resetMsg"></div>
+    <div class="rowbtns">
+      <button id="resetCancel">取消</button>
+      <button class="primary" id="resetSubmit">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="accountModal" hidden>
+  <div class="card">
+    <h2 id="accountName">账号</h2>
+    <p class="sub" id="accountEmail"></p>
+    <div id="identities"></div>
+    <div id="bindButtons" class="providers"></div>
+    <div class="sep">安全</div>
+    <details id="passwordBox">
+      <summary>修改密码</summary>
+      <div style="margin-top:10px">
+        <div class="field"><label>当前密码</label><input id="oldPassword" type="password" autocomplete="current-password"></div>
+        <div class="field"><label>新密码</label><input id="newPassword" type="password" autocomplete="new-password"></div>
+        <div class="authmsg" id="passwordMsg"></div>
+        <button type="button" id="changePassword">更新密码</button>
+      </div>
+    </details>
+    <div class="rowbtns" style="margin-top:16px">
+      <button id="logoutBtn">退出登录</button>
+      <button class="primary" id="closeAccount">关闭</button>
+    </div>
+  </div>
+</div>
+<script type="module">
 
 const $ = (id) => document.getElementById(id);
-// Desktop（Wails）通过 query 注入本地 Worker 地址；Web 端同源，两者代码一致。
+// Desktop（Wails）通过 query 注入本地 Worker 地址；Web 端同源；移动端在设置栏里填云端地址。
 const params = new URLSearchParams(location.search);
-const apiBase = params.get("api") || "";
+const trimBase = (v) => String(v || "").trim().replace(/\/+$/, "");
+// Wails 壳（桌面/移动端）若没有 api query，允许用户手动配置云端地址。
+// Android 的 Wails 运行时不会应用窗口 URL 的 query，因此这里不依赖 mode 参数。
+const isWailsShell = location.hostname === "wails.localhost";
+const isMobileShell = params.get("mode") === "mobile" || isWailsShell;
+const localWorkerMode = params.get("mode") === "container" || params.get("mode") === "process";
+const isNativeShell = isMobileShell || Boolean(window.__SOUNDER_NATIVE__);
+const NATIVE_AUTH_METHOD = "github.com/getsounder/sounder-desktop/shell.AuthService.StartOAuth";
+
+// Android 的 window.wails 是 Java bridge，不带 JS 运行时；
+// 需要动态加载打包后的 @wailsio/runtime 才能调用 Go 绑定。
+// 桌面端由 Wails 直接注入 window.wails.Call，无需再加载。
+let wailsRuntimePromise = null;
+function loadWailsRuntime() {
+  if (!isWailsShell) return Promise.resolve(null);
+  if (!wailsRuntimePromise) {
+    wailsRuntimePromise = import("@wailsio/runtime").catch(() => null);
+  }
+  return wailsRuntimePromise;
+}
+
+async function wailsCall(method, ...args) {
+  if (window.wails && window.wails.Call && window.wails.Call.ByName) {
+    return window.wails.Call.ByName(method, ...args);
+  }
+  const rt = await loadWailsRuntime();
+  if (rt && rt.Call && rt.Call.ByName) return rt.Call.ByName(method, ...args);
+  throw new Error("当前客户端不支持系统浏览器登录");
+}
+// 普通 Web 由 nginx 同源代理 /v1，空 apiBase 直接用相对路径。
+const sameOriginOk = !isMobileShell && !params.get("api");
 const state = {
+  apiBase: trimBase(params.get("api") || localStorage.getItem("sounder.api")),
   token: params.get("token") || localStorage.getItem("sounder.token") || "",
   sessions: [],
   current: null,
   abort: null,
   lastSeq: 0,
   bubble: null,
+  me: null,
+  providers: [],
+  authTab: "login",
+  persistToken: isNativeShell,
+};
+const hasEndpoint = () => Boolean(state.apiBase) || sameOriginOk;
+if (isMobileShell && !params.get("api")) {
+  $("setup").hidden = false;
+  $("api").value = state.apiBase;
+}
+
+function setMenu(open) {
+  document.body.classList.toggle("menu-open", open);
+}
+
+$("menuBtn").onclick = () => setMenu(!document.body.classList.contains("menu-open"));
+$("scrim").onclick = () => setMenu(false);
+
+$("applyApi").onclick = () => {
+  state.apiBase = trimBase($("api").value);
+  localStorage.setItem("sounder.api", state.apiBase);
+  setConn(false, "未连接");
+  bootstrap();
 };
 
-$("token").value = state.token;
-$("token").addEventListener("change", (e) => {
-  state.token = e.target.value.trim();
-  localStorage.setItem("sounder.token", state.token);
-  loadSessions().catch(showError);
-});
+class ApiError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
+}
 
 async function api(path, opts = {}) {
-  const res = await fetch(apiBase + path, {
+  const res = await fetch(state.apiBase + path, {
+    credentials: isNativeShell || localWorkerMode ? "omit" : "include",
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -119,22 +424,318 @@ async function api(path, opts = {}) {
   });
   if (!res.ok) {
     let msg = res.status + " " + res.statusText;
-    try { msg = (await res.text()) || msg; } catch (_) {}
-    throw new Error(msg);
+    try {
+      const text = await res.text();
+      if (text) {
+        try { msg = JSON.parse(text).error || text; } catch (_) { msg = text; }
+      }
+    } catch (_) {}
+    if (res.status === 401 && !path.startsWith("/v1/auth/") && !localWorkerMode) showAuth(true);
+    throw new ApiError(msg, res.status);
   }
   const ct = res.headers.get("content-type") || "";
   return ct.includes("json") ? res.json() : res.text();
 }
 
+function persistToken(token, persist = state.persistToken) {
+  state.token = token || "";
+  if (persist && state.token) localStorage.setItem("sounder.token", state.token);
+  else localStorage.removeItem("sounder.token");
+}
+$("token").value = state.token;
+$("applyToken").onclick = async () => {
+  persistToken($("token").value.trim(), true);
+  await bootstrap();
+};
+
+function showAuth(show) {
+  $("authModal").hidden = !show;
+  if (show) {
+    loadProviders().catch((e) => setAuthMsg(e.message, "err"));
+    if (params.get("verify") === "ok") setAuthMsg("邮箱已验证，请登录。", "ok");
+    if (params.get("verify") === "error") setAuthMsg("验证链接已失效。", "err");
+    if (params.get("authError")) setAuthMsg(params.get("authError"), "err");
+    if (params.get("linked")) setAuthMsg("已绑定 " + params.get("linked") + "。", "ok");
+  }
+}
+
+function setAuthMsg(text, kind) {
+  const el = $("authMsg");
+  el.textContent = text || "";
+  el.className = "authmsg" + (kind ? " " + kind : "");
+}
+
+function setAuthTab(tab) {
+  state.authTab = tab;
+  for (const b of $("authTabs").querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab === tab);
+  $("nameField").hidden = tab !== "register";
+  $("authSubmit").textContent = tab === "register" ? "注册" : "登录";
+  $("password").autocomplete = tab === "register" ? "new-password" : "current-password";
+  setAuthMsg("");
+}
+
+$("authTabs").onclick = (e) => {
+  const tab = e.target.closest("button")?.dataset.tab;
+  if (tab) setAuthTab(tab);
+};
+
+async function loadProviders() {
+  const data = await api("/v1/auth/providers");
+  state.providers = data.providers || [];
+  const box = $("providers");
+  box.innerHTML = "";
+  for (const p of state.providers) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "provider";
+    btn.textContent = "使用 " + (p.label || p.name) + " 登录";
+    btn.onclick = () => startOAuth(p.name);
+    box.appendChild(btn);
+  }
+  $("localForm").hidden = !data.local;
+  const hasProviders = state.providers.length > 0;
+  if (!data.local && !hasProviders) {
+    $("authSub").textContent = "此服务未启用账号系统，请在下方使用访问 token。";
+  } else if (hasProviders) {
+    $("authSub").textContent = "使用邮箱密码，或 Google / GitHub 账号。";
+  } else if (data.registration) {
+    $("authSub").textContent = "使用邮箱密码注册或登录。";
+  } else {
+    $("authSub").textContent = "登录以继续。";
+    const reg = $("authTabs").querySelector('[data-tab="register"]');
+    if (reg) reg.hidden = true;
+  }
+}
+
+async function submitAuth() {
+  const email = $("email").value.trim();
+  const password = $("password").value;
+  if (!email || !password) { setAuthMsg("请填写邮箱和密码。", "err"); return; }
+  $("authSubmit").disabled = true;
+  try {
+    const body = { email, password };
+    if (state.authTab === "register") body.displayName = $("displayName").value.trim();
+    const r = await api(state.authTab === "register" ? "/v1/auth/register" : "/v1/auth/login", {
+      method: "POST", body: JSON.stringify(body),
+    });
+    if (r.token) persistToken(r.token);
+    if (r.verificationRequired) {
+      setAuthMsg("注册成功，请查收验证邮件后再登录。", "ok");
+      setAuthTab("login");
+      return;
+    }
+    await afterLogin();
+  } catch (e) {
+    setAuthMsg(e.message, "err");
+  } finally {
+    $("authSubmit").disabled = false;
+  }
+}
+$("authSubmit").onclick = submitAuth;
+$("password").addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
+
+$("forgotBtn").onclick = async () => {
+  const email = $("email").value.trim() || prompt("请输入注册邮箱");
+  if (!email) return;
+  try {
+    await api("/v1/auth/password/forgot", { method: "POST", body: JSON.stringify({ email }) });
+    setAuthMsg("如果邮箱存在，重置链接已发送。", "ok");
+  } catch (e) { setAuthMsg(e.message, "err"); }
+};
+
+async function refreshMe() {
+  state.me = await api("/v1/auth/me");
+  updateUserUI();
+  return state.me;
+}
+
+function updateUserUI() {
+  const u = state.me && state.me.user;
+  const chip = $("userChip");
+  if (!u) { chip.hidden = true; return; }
+  chip.hidden = false;
+  chip.textContent = u.displayName || u.email || "账号";
+  chip.title = u.email || "";
+}
+
+async function afterLogin() {
+  await refreshMe();
+  showAuth(false);
+  await loadSessions();
+}
+
+async function bootstrap() {
+  if (!hasEndpoint()) { setConn(false, "请填写 API 地址"); return; }
+  if (localWorkerMode) {
+    // 桌面端直连本地 Worker，没有用户体系，沿用注入的 token。
+    try { await loadSessions(); } catch (e) { setConn(false, "未连接"); showError(e); }
+    return;
+  }
+  const qt = params.get("token");
+  if (qt) persistToken(qt, true);
+  const ticket = params.get("ticket");
+  if (ticket) {
+    try {
+      const r = await api("/v1/auth/native/exchange", { method: "POST", body: JSON.stringify({ ticket }) });
+      if (r.token) persistToken(r.token, true);
+    } catch (e) { setAuthMsg(e.message, "err"); }
+  }
+  try {
+    await refreshMe();
+    showAuth(false);
+    await loadSessions();
+  } catch (e) {
+    if (e.status === 401) showAuth(true);
+    else { showError(e); showAuth(true); }
+  }
+  if (ticket || qt || params.get("login") || params.get("verify") || params.get("linked") || params.get("authError")) {
+    const api = params.get("api");
+    history.replaceState(null, "", location.pathname + (api ? "?api=" + encodeURIComponent(api) : ""));
+  }
+}
+
+async function startOAuth(provider, link = false) {
+  if (isWailsShell) {
+    try {
+      const token = await wailsCall(NATIVE_AUTH_METHOD, provider, link, state.apiBase, state.token || "");
+      if (token) { persistToken(token, true); await afterLogin(); }
+    } catch (e) { setAuthMsg(String(e.message || e), "err"); }
+    return;
+  }
+  if (link) {
+    try {
+      const r = await api(`/v1/auth/oauth/${provider}/link/start?mode=json&client=web`, {});
+      location.href = r.url;
+    } catch (e) { setAuthMsg(e.message, "err"); }
+    return;
+  }
+  const back = location.pathname || "/";
+  location.href = `${state.apiBase}/v1/auth/oauth/${provider}/start?client=web&redirect=${encodeURIComponent(back)}`;
+}
+
+function openAccount() {
+  const u = state.me && state.me.user;
+  if (!u) return;
+  $("accountName").textContent = u.displayName || "账号";
+  $("accountEmail").textContent = u.email || "";
+  $("passwordBox").hidden = !state.me.hasPassword;
+  $("passwordMsg").textContent = "";
+  renderIdentities();
+  $("accountModal").hidden = false;
+}
+
+function renderIdentities() {
+  const ids = (state.me && state.me.identities) || [];
+  const labels = { local: "邮箱密码", google: "Google", github: "GitHub", dev: "开发登录" };
+  const box = $("identities");
+  box.innerHTML = "";
+  for (const id of ids) {
+    const row = document.createElement("div");
+    row.className = "identity";
+    const label = labels[id.provider] || id.provider;
+    const who = id.email || id.subject;
+    row.innerHTML = `<span>${esc(label)}<small>${esc(who)}</small></span>`;
+    if (ids.length > 1) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "link";
+      btn.textContent = "解绑";
+      btn.onclick = async () => {
+        if (!confirm(`解绑 ${label}？`)) return;
+        try { await api(`/v1/auth/identities/${encodeURIComponent(id.provider)}`, { method: "DELETE" }); await refreshMe(); renderIdentities(); }
+        catch (e) { alert(e.message); }
+      };
+      row.appendChild(btn);
+    }
+    box.appendChild(row);
+  }
+  const linked = new Set(ids.map((i) => i.provider));
+  const bind = $("bindButtons");
+  bind.innerHTML = "";
+  for (const p of state.providers) {
+    if (linked.has(p.name)) continue;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "provider";
+    btn.textContent = "绑定 " + (p.label || p.name);
+    btn.onclick = () => startOAuth(p.name, true);
+    bind.appendChild(btn);
+  }
+}
+
+$("userChip").onclick = async () => {
+  try { await refreshMe(); } catch (_) {}
+  openAccount();
+};
+$("closeAccount").onclick = () => { $("accountModal").hidden = true; };
+$("logoutBtn").onclick = async () => {
+  try { await api("/v1/auth/logout", { method: "POST" }); } catch (_) {}
+  persistToken("", true);
+  state.me = null;
+  state.sessions = [];
+  state.current = null;
+  updateUserUI();
+  renderSessions();
+  $("accountModal").hidden = true;
+  showAuth(true);
+};
+$("changePassword").onclick = async () => {
+  const msg = $("passwordMsg");
+  try {
+    await api("/v1/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ oldPassword: $("oldPassword").value, newPassword: $("newPassword").value }),
+    });
+    msg.textContent = "密码已更新，请重新登录。";
+    msg.className = "authmsg ok";
+    setTimeout(() => { persistToken("", true); state.me = null; updateUserUI(); $("accountModal").hidden = true; showAuth(true); }, 800);
+  } catch (e) { msg.textContent = e.message; msg.className = "authmsg err"; }
+};
+
+$("resetCancel").onclick = () => { $("resetModal").hidden = true; };
+$("resetSubmit").onclick = async () => {
+  const token = params.get("reset");
+  const msg = $("resetMsg");
+  try {
+    await api("/v1/auth/password/reset", { method: "POST", body: JSON.stringify({ token, password: $("resetPassword").value }) });
+    msg.textContent = "密码已重置，请登录。";
+    msg.className = "authmsg ok";
+    $("resetModal").hidden = true;
+    history.replaceState(null, "", location.pathname);
+    showAuth(true);
+  } catch (e) { msg.textContent = e.message; msg.className = "authmsg err"; }
+};
+
 function setConn(on, text) {
-  $("conn").className = on ? "on" : "";
-  $("connText").textContent = text || (on ? "已连接" : "未连接");
+  const label = text || (on ? "已连接" : "未连接");
+  const pending = /连接中/.test(label);
+  $("conn").className = on ? "on" : pending ? "pending" : "";
+  const pill = $("conn").parentElement;
+  pill.classList.toggle("on", on);
+  pill.classList.toggle("pending", !on && pending);
+  $("connText").textContent = label;
 }
 
 function logEl() { return $("log"); }
 
 function clearLog() {
   logEl().innerHTML = "";
+  state.bubble = null;
+}
+
+const HOME_HTML = `<div class="empty-state">
+  <div class="empty-logo">S</div>
+  <h3>开始与 Agent 协作</h3>
+  <p>新建一个会话，然后描述你想完成的任务。</p>
+  <div class="kbd-hints">
+    <span><kbd>Enter</kbd> 发送</span>
+    <span><kbd>Shift</kbd> + <kbd>Enter</kbd> 换行</span>
+  </div>
+</div>`;
+
+function renderHome() {
+  if (state.current) return;
+  logEl().innerHTML = HOME_HTML;
   state.bubble = null;
 }
 
@@ -145,9 +746,9 @@ async function loadHistory(sessionId) {
   addEl("event", "历史记录（来自 Session JSONL）");
   for (const m of msgs) {
     if (m.role === "user") {
-      addEl("msg user", `<div class="meta">you</div><div class="body">${esc(m.text || "")}</div>`);
+      addEl("msg user", `<div class="meta">你</div><div class="body">${esc(m.text || "")}</div>`);
     } else if (m.role === "assistant") {
-      addEl("msg assistant", `<div class="meta">assistant</div><div class="body">${esc(m.text || "")}</div>`);
+      addEl("msg assistant", `<div class="meta">Agent</div><div class="body">${esc(m.text || "")}</div>`);
     } else if (m.role === "toolResult") {
       addEl("tool", `<b>${esc(m.tool || "tool")}</b> ${m.isError ? "失败" : "完成"}${m.text ? " · " + esc(m.text.slice(0, 300)) : ""}`);
     }
@@ -167,30 +768,101 @@ function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+function friendlyError(err) {
+  const raw = String((err && err.message) || err || "未知错误");
+  if (/load failed|failed to fetch|network\s?error|networkerror/i.test(raw)) {
+    return "无法连接到服务。请确认后端已启动，或检查 API 地址后重试。";
+  }
+  if (/capacity/i.test(raw)) {
+    return "会话数已达上限。请先删除不用的会话，再新建。";
+  }
+  return raw;
+}
+
 function showError(err) {
-  addEl("error", esc(err.message || err));
+  const text = friendlyError(err);
+  const dup = [...logEl().querySelectorAll(".error-body")].some((el) => el.textContent === text);
+  if (dup) return;
+  const home = logEl().querySelector(".empty-state");
+  if (home) home.remove();
+  const box = addEl("error", `<div class="error-title">出错了</div><div class="error-body">${esc(text)}</div>`);
+  if (!state.current) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "retry";
+    btn.textContent = "重试连接";
+    btn.onclick = () => {
+      btn.disabled = true;
+      btn.textContent = "连接中…";
+      bootstrap();
+    };
+    box.appendChild(btn);
+  }
 }
 
 async function loadSessions() {
   const data = await api("/v1/sessions");
-  state.sessions = data.sessions || [];
+  // 本地 Worker 返回 ID 列表，云端 server 返回对象列表，这里统一成对象。
+  state.sessions = (data.sessions || []).map((s) =>
+    typeof s === "string" ? { id: s, model: "", state: "" } : s
+  );
   renderSessions();
+  if (!state.current) {
+    setConn(true, "已连接");
+    renderHome();
+  }
 }
+
+const STATE_LABELS = { running: "运行中", idle: "空闲", failed: "失败" };
 
 function renderSessions() {
   const ul = $("sessions");
   ul.innerHTML = "";
+  const count = $("sessionCount");
+  if (count) count.textContent = state.sessions.length ? String(state.sessions.length) : "";
   if (!state.sessions.length) {
-    ul.innerHTML = '<li style="cursor:default">暂无会话</li>';
+    ul.innerHTML = '<li class="empty-item">暂无会话</li>';
     return;
   }
   for (const s of state.sessions) {
     const li = document.createElement("li");
     li.className = state.current && state.current.id === s.id ? "active" : "";
-    li.innerHTML = `<span>${esc(s.id.slice(0, 12))}<br><small>${esc(s.model || "")}</small></span><i class="dot ${esc(s.state)}"></i>`;
-    li.onclick = () => selectSession(s);
+    const title = s.title || "#" + String(s.id).slice(0, 8);
+    const sub = [s.model, STATE_LABELS[s.state]].filter(Boolean).join(" · ");
+    li.innerHTML = `<span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${esc(sub || "本地会话")}</span></span><i class="dot ${esc(s.state || "")}"></i>`;
+    li.title = s.id;
+    li.onclick = () => { setMenu(false); selectSession(s); };
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "s-del";
+    del.title = "删除会话";
+    del.setAttribute("aria-label", "删除会话");
+    del.textContent = "×";
+    del.onclick = (e) => { e.stopPropagation(); deleteSession(s); };
+    li.appendChild(del);
     ul.appendChild(li);
   }
+}
+
+async function deleteSession(s) {
+  const wasCurrent = state.current && state.current.id === s.id;
+  try {
+    await api(`/v1/sessions/${encodeURIComponent(s.id)}`, { method: "DELETE" });
+  } catch (e) {
+    showError(e);
+    return;
+  }
+  state.sessions = state.sessions.filter((x) => x.id !== s.id);
+  if (wasCurrent) {
+    if (state.abort) { state.abort.abort(); state.abort = null; }
+    state.current = null;
+    state.lastSeq = 0;
+    clearLog();
+    $("prompt").disabled = true;
+    $("sendBtn").disabled = true;
+    renderHome();
+  }
+  renderSessions();
 }
 
 async function createSession() {
@@ -224,11 +896,15 @@ async function openStream(sessionId) {
   state.abort = ctrl;
   setConn(false, "连接中");
 
-  const res = await fetch(`${apiBase}/v1/sessions/${sessionId}/events?after=${state.lastSeq}`, {
+  const res = await fetch(`${state.apiBase}/v1/sessions/${sessionId}/events?after=${state.lastSeq}`, {
+    credentials: isNativeShell || localWorkerMode ? "omit" : "include",
     headers: state.token ? { Authorization: "Bearer " + state.token } : {},
     signal: ctrl.signal,
   });
-  if (!res.ok || !res.body) throw new Error("事件流失败: " + res.status);
+  if (!res.ok || !res.body) {
+    if (res.status === 401 && !localWorkerMode) { showAuth(true); }
+    throw new Error("事件流失败: " + res.status);
+  }
   setConn(true, "已连接");
 
   const reader = res.body.getReader();
@@ -267,11 +943,11 @@ function renderEvent(evt) {
   const p = evt.payload || {};
 
   if (type === "message.start") {
-    state.bubble = addEl("msg assistant", '<div class="meta">assistant</div><div class="body">生成中…</div>');
+    state.bubble = addEl("msg assistant", '<div class="meta">Agent</div><div class="body">生成中…</div>');
     return;
   }
   if (type === "message.delta") {
-    if (!state.bubble) state.bubble = addEl("msg assistant", '<div class="meta">assistant</div><div class="body"></div>');
+    if (!state.bubble) state.bubble = addEl("msg assistant", '<div class="meta">Agent</div><div class="body"></div>');
     const body = state.bubble.querySelector(".body");
     if (p.text) {
       const cur = body.textContent === "生成中…" ? "" : body.textContent;
@@ -344,8 +1020,9 @@ async function sendPrompt(e) {
   const text = $("prompt").value.trim();
   if (!text || !state.current) return;
   $("prompt").value = "";
+  $("prompt").style.height = "52px";
   $("sendBtn").disabled = true;
-  addEl("msg user", `<div class="meta">you</div><div class="body">${esc(text)}</div>`);
+  addEl("msg user", `<div class="meta">你</div><div class="body">${esc(text)}</div>`);
   try {
     await api(`/v1/sessions/${state.current.id}/prompts`, {
       method: "POST",
@@ -360,11 +1037,35 @@ async function sendPrompt(e) {
 $("newBtn").onclick = createSession;
 $("refreshBtn").onclick = () => loadSessions().catch(showError);
 $("composer").onsubmit = sendPrompt;
+const promptEl = $("prompt");
+function resizePrompt() {
+  promptEl.style.height = "auto";
+  promptEl.style.height = Math.min(promptEl.scrollHeight, 168) + "px";
+}
+promptEl.addEventListener("input", resizePrompt);
 $("prompt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); }
 });
 
-loadSessions().catch(showError);
+// Android/桌面深链：sounder://auth/callback?ticket=... 由原生层调用。
+window.__sounderOnAuthCallback = async (raw) => {
+  try {
+    const u = new URL(raw);
+    if (u.searchParams.get("error")) { setAuthMsg(u.searchParams.get("error"), "err"); showAuth(true); return; }
+    const ticket = u.searchParams.get("ticket");
+    if (!ticket) { setAuthMsg("登录回调缺少 ticket。", "err"); showAuth(true); return; }
+    const r = await api("/v1/auth/native/exchange", { method: "POST", body: JSON.stringify({ ticket }) });
+    if (r.token) { persistToken(r.token, true); await afterLogin(); }
+  } catch (e) { setAuthMsg(e.message || String(e), "err"); showAuth(true); }
+};
+
+if (params.get("reset")) {
+  $("resetModal").hidden = false;
+} else if (hasEndpoint()) {
+  bootstrap();
+} else {
+  setConn(false, "请填写 API 地址");
+}
 </script>
 </body>
 </html>
