@@ -111,7 +111,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleList(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"sessions": s.mgr.List(),
+		"sessions": s.mgr.Views(),
 		"capacity": s.mgr.Capacity(),
 		"used":     s.mgr.Len(),
 	})
