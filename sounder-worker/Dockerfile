@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       bash ca-certificates git ripgrep fd-find curl \
     && ln -sf "$(command -v fdfind)" /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 pig
+    && useradd --create-home --uid 10001 pig \
+    && mkdir -p /data && chown -R 10001:10001 /data
 
 COPY --from=build /out/sounder-worker /usr/local/bin/sounder-worker
 

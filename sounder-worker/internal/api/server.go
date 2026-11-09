@@ -41,7 +41,26 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/approvals/{id}", s.handleApprovalResolve)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
-	return s.auth(mux)
+	return s.cors(s.auth(mux))
+}
+
+// cors 允许桌面/移动 WebView 以自定义 scheme（例如 wails://wails）跨源访问本地 Worker。
+// Worker 用 Bearer token 鉴权，不依赖 Cookie，因此可以回显任意 Origin；预检请求直接放行。
+func (s *Server) cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID")
+			w.Header().Set("Access-Control-Max-Age", "600")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) auth(next http.Handler) http.Handler {
@@ -85,7 +104,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, protocol.CreateSessionResponse{
 		ID:        actor.ID,
-		Model:     req.Model,
+		Model:     actor.ModelID,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 }

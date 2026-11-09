@@ -36,7 +36,8 @@ type Quota struct {
 
 // Approver 由 approval.Gate 实现；工具执行前用它阻塞等待人工确认。
 type Actor struct {
-	ID string
+	ID      string
+	ModelID string
 
 	guard *policy.Guard
 
@@ -103,6 +104,7 @@ func New(opts Options) (*Actor, error) {
 
 	a := &Actor{
 		ID:         opts.ID,
+		ModelID:    opts.ModelID,
 		guard:      policy.NewGuard(opts.CWD, nil),
 		services:   services,
 		runtime:    rt,
