@@ -35,7 +35,11 @@ go run ./cmd/sounder-server -addr=0.0.0.0:8000 \
 - 存储：`-store=memory`（默认，重启丢失）或 `-store=postgres -dsn=...`（已实现，验证过 kill -9 后会话仍在）。
 - 选 Worker：优先 `kind=cloud` 且 `used < capacity`。
 - 事件：SSE 透传，收到 `session.settled` 时把会话状态改回 `idle`。
-- 鉴权：静态 Bearer token；OIDC 未接。
+- 鉴权：默认启用用户体系（本地账号 + Google/GitHub），Web 用 Cookie，原生端用 Bearer；
+  `-token` 仍兼容，作为管理员/服务 token。
+- CORS：白名单 Origin（`SOUNDER_WEB_URL` / `SOUNDER_PUBLIC_URL`）回显并允许 Cookie；
+  其他 Origin 返回 `*` 且不允许凭证。允许 `Authorization` / `Content-Type`，
+  `GET/POST/DELETE/OPTIONS`。
 
 ## 典型调用
 

@@ -1,4 +1,4 @@
-// Package store 是控制面的会话元数据存储。
+// Package store 是控制面的会话元数据与用户身份存储。
 // M0 用内存实现；接 PostgreSQL 时只需换一个实现。
 package store
 
@@ -9,10 +9,11 @@ import (
 	"time"
 )
 
-var ErrNotFound = errors.New("session not found")
+var ErrNotFound = errors.New("not found")
 
 type Session struct {
 	ID        string    `json:"id"`
+	OwnerID   string    `json:"ownerId,omitempty"`
 	WorkerID  string    `json:"workerId"`
 	Model     string    `json:"model"`
 	State     string    `json:"state"`
@@ -23,7 +24,10 @@ type Session struct {
 type Store interface {
 	Create(s Session) error
 	Get(id string) (Session, error)
+	// GetOwned 只在会话属于 ownerID 时返回；否则返回 ErrNotFound。
+	GetOwned(id, ownerID string) (Session, error)
 	List() []Session
+	ListByOwner(ownerID string) []Session
 	UpdateState(id, state string) error
 	Delete(id string) error
 }
@@ -64,6 +68,17 @@ func (m *Memory) Get(id string) (Session, error) {
 	return s, nil
 }
 
+func (m *Memory) GetOwned(id, ownerID string) (Session, error) {
+	s, err := m.Get(id)
+	if err != nil {
+		return Session{}, err
+	}
+	if s.OwnerID != ownerID {
+		return Session{}, ErrNotFound
+	}
+	return s, nil
+}
+
 func (m *Memory) List() []Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -72,6 +87,17 @@ func (m *Memory) List() []Session {
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out
+}
+
+func (m *Memory) ListByOwner(ownerID string) []Session {
+	all := m.List()
+	out := make([]Session, 0, len(all))
+	for _, s := range all {
+		if s.OwnerID == ownerID {
+			out = append(out, s)
+		}
+	}
 	return out
 }
 
