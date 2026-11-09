@@ -125,6 +125,12 @@ func (m *Manager) Delete(id string) {
 	if ok {
 		a.Close()
 	}
+	// 目录也要删掉：否则下次启动 Restore 会把已删除的会话又恢复出来。
+	if strings.HasPrefix(id, "ses_") {
+		if err := os.RemoveAll(filepath.Join(m.dataDir, "sessions", id)); err != nil {
+			log.Printf("delete session dir %s: %v", id, err)
+		}
+	}
 }
 
 func (m *Manager) CloseAll() {
