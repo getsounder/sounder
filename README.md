@@ -102,6 +102,33 @@ curl -s -X POST "localhost:8000/v1/approvals/<id>?workerId=w1" \
   -d '{"allow":true}'
 ```
 
+## Local end-to-end check
+
+The whole stack can be exercised without a cloud account:
+
+```bash
+docker compose up -d --build          # 8 services
+curl localhost:8000/healthz           # {"status":"ok"}
+curl -H "Authorization: Bearer dev-token" localhost:8000/v1/workers
+./scripts/e2e-auth.sh                 # user system e2e: 74 assertions
+```
+
+The auth e2e script covers local registration/login, Cookie + Bearer sessions,
+session ownership isolation, legacy-token admin visibility, session revocation,
+password change/reset, identity unbinding, CORS, OAuth-disabled behavior,
+body limits and registration rate limiting. It creates throwaway accounts in
+the local database (random emails) and deletes the session it creates.
+
+- session create → prompt → SSE (`message.*`, `turn.end`, `error`) works end to end;
+- the worker container can write `/data` (the Dockerfile chowns the named volume);
+- `OPTIONS` preflight returns `204`; configured Web origins are echoed with credentials.
+- the Android APK (`sounder-desktop/bin/sounder.apk`) connects to `http://10.0.2.2:8000`
+  from the emulator, lists sessions, opens history and streams events.
+
+Real model output needs a real key in `.env` (`MINIMAX_CN_API_KEY`, `OPENAI_API_KEY` or
+`ANTHROPIC_API_KEY`). With a placeholder key the turn ends with a provider `401`, which is
+expected; the control-plane flow above still works.
+
 ## What is verified
 
 | Capability | Status |
@@ -111,7 +138,9 @@ curl -s -X POST "localhost:8000/v1/approvals/<id>?workerId=w1" \
 | Session recovery after `kill -9` | ✅ |
 | Control plane persistence (PostgreSQL) | ✅ |
 | Gateway tunnel end to end | ✅ |
-| Android APK build | ✅ |
+| Android APK build + emulator session flow | ✅ |
+| Local auth e2e (`scripts/e2e-auth.sh`, 74 assertions) | ✅ |
+| Full docker-compose stack (8 services) | ✅ |
 | Desktop GUI on a graphical session | ⚠️ not run yet |
 | iOS build | ⚠️ needs full Xcode |
 | Kubernetes manifests | ❌ not written |
@@ -130,6 +159,7 @@ PiG does not sandbox model output. Sounder adds a policy layer in front of every
 ## Documentation
 
 - [Architecture and design notes (Chinese)](pig-agent-cloud-architecture.md)
+- [User system: local accounts + Google/GitHub (Chinese)](docs/user-system.md)
 - [Worker](sounder-worker/README.md)
 - [Gateway](sounder-gateway/README.md)
 - [Control plane](sounder-server/README.md)
