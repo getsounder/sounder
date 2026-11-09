@@ -17,7 +17,9 @@ metadata:
   name: sounder-server
   namespace: sounder
 spec:
-  replicas: 2
+  # OAuth 的 state 存在单进程内存，多副本需要粘性会话或共享存储；
+  # 示例部署先保持 1 副本，避免回调落到其他 Pod 后 state 校验失败。
+  replicas: 1
   selector:
     matchLabels:
       app: sounder-server
@@ -42,6 +44,23 @@ spec:
             - "-token=$(SOUNDER_TOKEN)"
             - "-store=postgres"
             - "-dsn=postgres://sounder:$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)?sslmode=disable"
+            - "-auth=$(SOUNDER_AUTH)"
+            - "-public-url=$(SOUNDER_PUBLIC_URL)"
+            - "-web-url=$(SOUNDER_WEB_URL)"
+            - "-cookie-secure=$(SOUNDER_COOKIE_SECURE)"
+            - "-local-auth=$(SOUNDER_LOCAL_AUTH)"
+            - "-registration=$(SOUNDER_REGISTRATION)"
+            - "-require-email-verify=$(SOUNDER_REQUIRE_EMAIL_VERIFY)"
+            - "-native-redirect=$(SOUNDER_NATIVE_REDIRECT)"
+            - "-dev-provider=$(SOUNDER_DEV_PROVIDER)"
+            - "-google-client-id=$(SOUNDER_GOOGLE_CLIENT_ID)"
+            - "-google-client-secret=$(SOUNDER_GOOGLE_CLIENT_SECRET)"
+            - "-github-client-id=$(SOUNDER_GITHUB_CLIENT_ID)"
+            - "-github-client-secret=$(SOUNDER_GITHUB_CLIENT_SECRET)"
+            - "-smtp-addr=$(SOUNDER_SMTP_ADDR)"
+            - "-smtp-user=$(SOUNDER_SMTP_USER)"
+            - "-smtp-pass=$(SOUNDER_SMTP_PASS)"
+            - "-smtp-from=$(SOUNDER_SMTP_FROM)"
           envFrom:
             - configMapRef: { name: sounder-config }
           env:

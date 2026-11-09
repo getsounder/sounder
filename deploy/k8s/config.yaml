@@ -13,6 +13,15 @@ data:
   POSTGRES_USER: "sounder"
   REDIS_ADDR: "sounder-redis:6379"
   MINIO_ENDPOINT: "http://sounder-minio:9000"
+  SOUNDER_PUBLIC_URL: "https://sounder.example.com"
+  SOUNDER_WEB_URL: "https://sounder.example.com"
+  SOUNDER_AUTH: "true"
+  SOUNDER_LOCAL_AUTH: "true"
+  SOUNDER_REGISTRATION: "true"
+  SOUNDER_REQUIRE_EMAIL_VERIFY: "false"
+  SOUNDER_COOKIE_SECURE: "true"
+  SOUNDER_NATIVE_REDIRECT: "sounder://auth/callback"
+  SOUNDER_DEV_PROVIDER: "false"
 ---
 # 示例值，不要提交真实凭证。
 apiVersion: v1
@@ -27,3 +36,11 @@ stringData:
   MINIO_ROOT_USER: "sounder"
   MINIO_ROOT_PASSWORD: "minioadmin"
   MINIMAX_CN_API_KEY: ""
+  SOUNDER_GOOGLE_CLIENT_ID: ""
+  SOUNDER_GOOGLE_CLIENT_SECRET: ""
+  SOUNDER_GITHUB_CLIENT_ID: ""
+  SOUNDER_GITHUB_CLIENT_SECRET: ""
+  SOUNDER_SMTP_ADDR: ""
+  SOUNDER_SMTP_USER: ""
+  SOUNDER_SMTP_PASS: ""
+  SOUNDER_SMTP_FROM: "no-reply@sounder.local"

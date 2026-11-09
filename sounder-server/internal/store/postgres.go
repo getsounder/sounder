@@ -8,7 +8,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// Postgres 是控制面的持久化实现。会话元数据量很小，单表足够。
+// Postgres 是控制面的持久化实现。会话与用户元数据量都很小，单库足够。
 type Postgres struct {
 	db *sql.DB
 }
@@ -16,13 +16,86 @@ type Postgres struct {
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
     id         TEXT PRIMARY KEY,
+    owner_id   TEXT,
     worker_id  TEXT NOT NULL,
     model      TEXT NOT NULL DEFAULT '',
     state      TEXT NOT NULL DEFAULT 'created',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS owner_id TEXT;
 CREATE INDEX IF NOT EXISTS sessions_created_at_idx ON sessions (created_at DESC);
+CREATE INDEX IF NOT EXISTS sessions_owner_idx ON sessions (owner_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS users (
+    id             TEXT PRIMARY KEY,
+    email          TEXT,
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    display_name   TEXT NOT NULL DEFAULT '',
+    avatar_url     TEXT NOT NULL DEFAULT '',
+    is_admin       BOOLEAN NOT NULL DEFAULT FALSE,
+    status         TEXT NOT NULL DEFAULT 'active',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_key
+    ON users (lower(email)) WHERE email IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS identities (
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider       TEXT NOT NULL,
+    subject        TEXT NOT NULL,
+    email          TEXT,
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_login_at  TIMESTAMPTZ,
+    UNIQUE (provider, subject)
+);
+CREATE INDEX IF NOT EXISTS identities_user_idx ON identities (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS identities_user_provider_key
+    ON identities (user_id, provider);
+
+CREATE TABLE IF NOT EXISTS local_credentials (
+    user_id             TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    password_hash       TEXT NOT NULL,
+    password_updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash   BYTEA NOT NULL UNIQUE,
+    user_agent   TEXT NOT NULL DEFAULT '',
+    ip           TEXT NOT NULL DEFAULT '',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at   TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS auth_sessions_user_idx ON auth_sessions (user_id);
+CREATE INDEX IF NOT EXISTS auth_sessions_expires_idx ON auth_sessions (expires_at);
+
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,
+    token_hash BYTEA NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at    TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auth_tokens_user_idx ON auth_tokens (user_id);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    TEXT,
+    action     TEXT NOT NULL,
+    ip         TEXT NOT NULL DEFAULT '',
+    user_agent TEXT NOT NULL DEFAULT '',
+    detail     JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS audit_events_created_idx ON audit_events (created_at DESC);
 `
 
 func NewPostgres(dsn string) (*Postgres, error) {
@@ -60,9 +133,9 @@ func (p *Postgres) Create(s Session) error {
 	}
 
 	_, err := p.db.Exec(
-		`INSERT INTO sessions (id, worker_id, model, state, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		s.ID, s.WorkerID, s.Model, s.State, s.CreatedAt, s.UpdatedAt,
+		`INSERT INTO sessions (id, owner_id, worker_id, model, state, created_at, updated_at)
+		 VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7)`,
+		s.ID, s.OwnerID, s.WorkerID, s.Model, s.State, s.CreatedAt, s.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
@@ -70,25 +143,55 @@ func (p *Postgres) Create(s Session) error {
 	return nil
 }
 
-func (p *Postgres) Get(id string) (Session, error) {
+func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
-	err := p.db.QueryRow(
-		`SELECT id, worker_id, model, state, created_at, updated_at FROM sessions WHERE id = $1`,
-		id,
-	).Scan(&s.ID, &s.WorkerID, &s.Model, &s.State, &s.CreatedAt, &s.UpdatedAt)
-	if err == sql.ErrNoRows {
-		return Session{}, ErrNotFound
+	var owner sql.NullString
+	err := row.Scan(&s.ID, &owner, &s.WorkerID, &s.Model, &s.State, &s.CreatedAt, &s.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return Session{}, ErrNotFound
+		}
+		return Session{}, err
 	}
+	s.OwnerID = owner.String
+	return s, nil
+}
+
+func (p *Postgres) Get(id string) (Session, error) {
+	s, err := scanSession(p.db.QueryRow(
+		`SELECT id, owner_id, worker_id, model, state, created_at, updated_at
+		 FROM sessions WHERE id = $1`, id))
 	if err != nil {
 		return Session{}, fmt.Errorf("get session: %w", err)
 	}
 	return s, nil
 }
 
+func (p *Postgres) GetOwned(id, ownerID string) (Session, error) {
+	s, err := scanSession(p.db.QueryRow(
+		`SELECT id, owner_id, worker_id, model, state, created_at, updated_at
+		 FROM sessions WHERE id = $1 AND owner_id = $2`, id, ownerID))
+	if err != nil {
+		if err == ErrNotFound {
+			return Session{}, ErrNotFound
+		}
+		return Session{}, fmt.Errorf("get session: %w", err)
+	}
+	return s, nil
+}
+
 func (p *Postgres) List() []Session {
-	rows, err := p.db.Query(
-		`SELECT id, worker_id, model, state, created_at, updated_at
+	return p.list(`SELECT id, owner_id, worker_id, model, state, created_at, updated_at
 		 FROM sessions ORDER BY created_at DESC LIMIT 500`)
+}
+
+func (p *Postgres) ListByOwner(ownerID string) []Session {
+	return p.list(`SELECT id, owner_id, worker_id, model, state, created_at, updated_at
+		 FROM sessions WHERE owner_id = $1 ORDER BY created_at DESC LIMIT 500`, ownerID)
+}
+
+func (p *Postgres) list(query string, args ...any) []Session {
+	rows, err := p.db.Query(query, args...)
 	if err != nil {
 		return nil
 	}
@@ -96,8 +199,7 @@ func (p *Postgres) List() []Session {
 
 	var out []Session
 	for rows.Next() {
-		var s Session
-		if rows.Scan(&s.ID, &s.WorkerID, &s.Model, &s.State, &s.CreatedAt, &s.UpdatedAt) == nil {
+		if s, err := scanSession(rows); err == nil {
 			out = append(out, s)
 		}
 	}

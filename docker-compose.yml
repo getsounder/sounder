@@ -104,6 +104,24 @@ services:
       - "-token=${SOUNDER_TOKEN:-dev-token}"
       - "-store=postgres"
       - "-dsn=postgres://sounder:${POSTGRES_PASSWORD:-sounder}@sounder-postgres:5432/sounder?sslmode=disable"
+      - "-auth=${SOUNDER_AUTH:-true}"
+      - "-public-url=${SOUNDER_PUBLIC_URL:-http://localhost:8000}"
+      - "-web-url=${SOUNDER_WEB_URL:-http://localhost:3000}"
+      - "-cookie-secure=${SOUNDER_COOKIE_SECURE:-false}"
+      - "-cookie-domain=${SOUNDER_COOKIE_DOMAIN:-}"
+      - "-local-auth=${SOUNDER_LOCAL_AUTH:-true}"
+      - "-registration=${SOUNDER_REGISTRATION:-true}"
+      - "-require-email-verify=${SOUNDER_REQUIRE_EMAIL_VERIFY:-false}"
+      - "-native-redirect=${SOUNDER_NATIVE_REDIRECT:-sounder://auth/callback}"
+      - "-google-client-id=${SOUNDER_GOOGLE_CLIENT_ID:-}"
+      - "-google-client-secret=${SOUNDER_GOOGLE_CLIENT_SECRET:-}"
+      - "-github-client-id=${SOUNDER_GITHUB_CLIENT_ID:-}"
+      - "-github-client-secret=${SOUNDER_GITHUB_CLIENT_SECRET:-}"
+      - "-dev-provider=${SOUNDER_DEV_PROVIDER:-false}"
+      - "-smtp-addr=${SOUNDER_SMTP_ADDR:-}"
+      - "-smtp-user=${SOUNDER_SMTP_USER:-}"
+      - "-smtp-pass=${SOUNDER_SMTP_PASS:-}"
+      - "-smtp-from=${SOUNDER_SMTP_FROM:-no-reply@sounder.local}"
     ports:
       - "${SERVER_PORT:-8000}:8000"
     depends_on:
@@ -127,7 +145,7 @@ services:
       sounder-server:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
       interval: 10s
       timeout: 3s
       retries: 10

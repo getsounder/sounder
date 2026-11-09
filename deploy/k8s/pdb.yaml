@@ -4,7 +4,9 @@ metadata:
   name: sounder-server
   namespace: sounder
 spec:
-  minAvailable: 1
+  # sounder-server 目前单副本（OAuth state 在进程内）；minAvailable: 0
+  # 允许滚动更新和节点维护，避免单副本被 PDB 永久阻塞。
+  minAvailable: 0
   selector:
     matchLabels: { app: sounder-server }
 ---
