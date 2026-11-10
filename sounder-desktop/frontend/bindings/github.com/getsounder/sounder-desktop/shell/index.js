@@ -10,5 +10,6 @@ export {
 };
 
 export {
+    Device,
     Endpoint
 } from "./models.js";

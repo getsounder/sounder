@@ -560,7 +560,7 @@ const state = {
   token: params.get("token") || localStorage.getItem("sounder.token") || "",
   sessions: [],
   devices: [],
-  device: "",
+  device: params.get("device") || "",
   quota: null,
   capacity: 0,
   used: 0,
@@ -755,6 +755,7 @@ async function bootstrap() {
   if (!hasEndpoint()) { setConn(false, "请填写 API 地址"); return; }
   if (localWorkerMode) {
     // 桌面端直连本地 Worker，没有用户体系，沿用注入的 token。
+    try { await loadDevices(); } catch (_) {}
     try { await loadSessions(); } catch (e) { setConn(false, "未连接"); showError(e); }
     return;
   }
@@ -1403,9 +1404,7 @@ function updateSessionChrome() {
 
   // 设备 chip：云端模式下显示当前设备与在线状态；本地 Worker 直连时不显示。
   const dChip = $("deviceChip");
-  if (localWorkerMode) {
-    dChip.hidden = true;
-  } else {
+  {
     const dev = currentDevice();
     dChip.hidden = false;
     $("deviceName").textContent = dev ? (dev.name || dev.workerId) : (state.devices.length ? "选择设备" : "添加设备");
@@ -1634,7 +1633,30 @@ function currentDevice() {
 }
 
 async function loadDevices() {
-  if (localWorkerMode) return null;
+  if (localWorkerMode) {
+    // 桌面端：设备就是本机的容器/进程，由 Go 侧的设备管理器提供。
+    try {
+      const list = await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.ListDevices");
+      state.devices = (list || []).map((d) => ({
+        id: d.id,
+        workerId: d.id,
+        name: d.name,
+        kind: d.kind,
+        status: d.status === "running" ? "online" : "offline",
+        local: true,
+      }));
+      if (!state.device) {
+        const running = state.devices.find((d) => d.status === "online");
+        state.device = running ? running.workerId : "";
+      }
+      state.quota = null;
+      renderDeviceMenu();
+      updateSessionChrome();
+    } catch (e) {
+      /* 设备列表拿不到不影响直连 Worker */
+    }
+    return null;
+  }
   const data = await api("/v1/devices");
   state.devices = data.devices || [];
   state.quota = data.quota || null;
@@ -1653,6 +1675,10 @@ async function loadDevices() {
 
 function renderDeviceMenu() {
   const ul = $("deviceList");
+  $("addCloudDevice").textContent = localWorkerMode ? "＋ 新建设备" : "＋ 添加云端设备";
+  if (localWorkerMode) {
+    $("deviceQuota").textContent = `本机 ${state.devices.filter((d) => d.status === "online").length}/${state.devices.length} 运行中`;
+  }
   const q = state.quota;
   if (q) {
     $("deviceQuota").textContent = `云端 ${state.cloudDevices || 0}/${q.maxDevices} · ${q.deviceCpu}C/${Math.round((q.deviceMemMb || 0) / 1024)}G/${q.deviceDiskGb}G`;
@@ -1692,7 +1718,19 @@ function renderDeviceMenu() {
   }
 }
 
-function selectDevice(workerId) {
+async function selectDevice(workerId) {
+  if (localWorkerMode) {
+    $("deviceMenu").hidden = true;
+    if (workerId === state.device) return;
+    try {
+      const dev = await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.StartDevice", workerId);
+      const mode = dev.kind === "desktop-process" ? "process" : "container";
+      location.href = `/?api=${encodeURIComponent(dev.baseUrl)}&token=${encodeURIComponent(dev.token)}&mode=${mode}&device=${encodeURIComponent(dev.id)}`;
+    } catch (e) {
+      toast("切换设备失败：" + (e.message || e));
+    }
+    return;
+  }
   state.device = workerId;
   try { localStorage.setItem(DEVICE_KEY, workerId); } catch (_) {}
   $("deviceMenu").hidden = true;
@@ -1707,6 +1745,20 @@ function selectDevice(workerId) {
 
 async function createCloudDevice() {
   const btn = $("addCloudDevice");
+  if (localWorkerMode) {
+    btn.disabled = true;
+    btn.textContent = "创建中…";
+    try {
+      const dev = await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.AddDevice", "");
+      const mode = dev.kind === "desktop-process" ? "process" : "container";
+      location.href = `/?api=${encodeURIComponent(dev.baseUrl)}&token=${encodeURIComponent(dev.token)}&mode=${mode}&device=${encodeURIComponent(dev.id)}`;
+    } catch (e) {
+      toast(e.message || "创建失败");
+      btn.disabled = false;
+      btn.textContent = "＋ 新建设备";
+    }
+    return;
+  }
   btn.disabled = true;
   btn.textContent = "创建中…";
   try {
@@ -1726,6 +1778,12 @@ async function renameDevice(d) {
   const name = prompt("设备名称", d.name || d.workerId);
   if (!name) return;
   try {
+    if (localWorkerMode) {
+      await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.RenameDevice", d.id, name);
+      await loadDevices();
+      toast("已重命名");
+      return;
+    }
     await api(`/v1/devices/${encodeURIComponent(d.id)}`, { method: "PATCH", body: JSON.stringify({ name }) });
     await loadDevices();
     toast("已重命名");
@@ -1733,8 +1791,22 @@ async function renameDevice(d) {
 }
 
 async function removeDevice(d) {
-  if (!confirm(`移除设备「${d.name || d.workerId}」？会话记录仍保留。`)) return;
+  const warn = localWorkerMode
+    ? `删除设备「${d.name || d.workerId}」？它的数据目录会一起删掉。`
+    : `移除设备「${d.name || d.workerId}」？会话记录仍保留。`;
+  if (!confirm(warn)) return;
   try {
+    if (localWorkerMode) {
+      await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.RemoveDevice", d.id);
+      if (state.device === d.workerId) {
+        state.device = "";
+        location.reload();
+        return;
+      }
+      await loadDevices();
+      toast("设备已删除");
+      return;
+    }
     await api(`/v1/devices/${encodeURIComponent(d.id)}`, { method: "DELETE" });
     if (state.device === d.workerId) {
       state.device = "";

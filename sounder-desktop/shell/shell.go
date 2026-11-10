@@ -20,9 +20,10 @@ import (
 )
 
 type Endpoint struct {
-	BaseURL string `json:"baseUrl"`
-	Token   string `json:"token"`
-	Mode    string `json:"mode"` // container | process
+	BaseURL  string `json:"baseUrl"`
+	Token    string `json:"token"`
+	Mode     string `json:"mode"` // container | process
+	DeviceID string `json:"deviceId,omitempty"`
 }
 
 type Runner interface {
@@ -40,11 +41,18 @@ type Config struct {
 }
 
 // Service 是 Wails 的 service 实现，也是 CLI 调试入口。
+// 一个 Service 管理多个本机设备（每个设备一个容器/进程）。
 type Service struct {
-	mu     sync.Mutex
-	cfg    Config
-	runner Runner
-	ep     Endpoint
+	mu        sync.Mutex
+	cfg       Config
+	runner    Runner
+	ep        Endpoint
+	workspace string
+
+	devices map[string]*deviceRuntime
+	order   []string
+	active  string
+	loaded  bool
 }
 
 func New(cfg Config) *Service {
@@ -61,7 +69,7 @@ func New(cfg Config) *Service {
 		home, _ := os.UserHomeDir()
 		cfg.DataDir = filepath.Join(home, "Library", "Application Support", "Sounder")
 	}
-	return &Service{cfg: cfg}
+	return &Service{cfg: cfg, devices: make(map[string]*deviceRuntime)}
 }
 
 func (s *Service) WorkerEndpoint() Endpoint {
@@ -92,57 +100,62 @@ func (s *Service) OpenPath(path string) error {
 	return cmd.Start()
 }
 
+// StartWorker 启动（必要时创建）默认设备，返回它的访问地址。
+// 兼容旧调用方：不指定设备时总是用列表里的第一台。
 func (s *Service) StartWorker(workspace string) (Endpoint, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.ep.BaseURL != "" {
-		return s.ep, nil
+		ep := s.ep
+		s.mu.Unlock()
+		return ep, nil
 	}
 	if workspace == "" {
 		workspace, _ = os.UserHomeDir()
 	}
+	s.workspace = workspace
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
+		s.mu.Unlock()
 		return Endpoint{}, err
 	}
-
-	runner := s.runner
-	if runner == nil {
-		switch s.cfg.Mode {
-		case "process":
-			runner = &ProcessRunner{Binary: s.cfg.Binary, DataDir: s.cfg.DataDir, Model: s.cfg.Model}
-		default:
-			runner = &ContainerRunner{
-				Image: s.cfg.Image, Container: s.cfg.Container,
-				DataDir: s.cfg.DataDir, Model: s.cfg.Model,
-			}
-		}
+	if err := s.loadDevices(); err != nil {
+		s.mu.Unlock()
+		return Endpoint{}, err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
-	ep, err := runner.Start(ctx, workspace)
+	first := s.order[0]
+	d := s.devices[first]
+	dev, err := s.startDeviceLocked(d)
 	if err != nil {
+		s.mu.Unlock()
 		return Endpoint{}, err
 	}
-	s.runner = runner
-	s.ep = ep
+	ep := Endpoint{BaseURL: dev.BaseURL, Token: dev.Token, Mode: s.cfg.Mode, DeviceID: dev.ID}
+	s.mu.Unlock()
 	return ep, nil
 }
 
+// StopWorker 停止所有本机设备（退出时调用）。
 func (s *Service) StopWorker() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.runner == nil {
-		return nil
+	var firstErr error
+	for _, id := range s.order {
+		d := s.devices[id]
+		if d == nil || d.runner == nil {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := d.runner.Stop(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		cancel()
+		d.runner = nil
+		d.Status = "stopped"
+		d.BaseURL = ""
+		d.Token = ""
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	err := s.runner.Stop(ctx)
-	s.runner = nil
+	s.active = ""
 	s.ep = Endpoint{}
-	return err
+	return firstErr
 }
 
 // ---------- container ----------

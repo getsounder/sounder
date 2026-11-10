@@ -4,6 +4,7 @@
 
 /**
  * Service 是 Wails 的 service 实现，也是 CLI 调试入口。
+ * 一个 Service 管理多个本机设备（每个设备一个容器/进程）。
  * @module
  */
 
@@ -16,6 +17,27 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
+ * AddDevice 新建一个本机设备（容器/进程），并立即启动。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.Device>}
+ */
+export function AddDevice(name) {
+    return $Call.ByID(498749771, name).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
+}
+
+/**
+ * ListDevices 返回本机设备（含运行状态）；不含 token。
+ * @returns {$CancellablePromise<$models.Device[]>}
+ */
+export function ListDevices() {
+    return $Call.ByID(3255026893).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
+}
+
+/**
  * OpenPath 在系统文件管理器里定位一个文件（界面里的文件路径可点击）。
  * 只接受已存在的路径，避免把任意字符串交给 shell。
  * @param {string} path
@@ -26,16 +48,58 @@ export function OpenPath(path) {
 }
 
 /**
- * @param {string} workspace
- * @returns {$CancellablePromise<$models.Endpoint>}
+ * RemoveDevice 停止并删除设备（连同它的数据目录）。
+ * @param {string} id
+ * @returns {$CancellablePromise<void>}
  */
-export function StartWorker(workspace) {
-    return $Call.ByID(177529408, workspace).then(/** @type {($result: any) => any} */(($result) => {
+export function RemoveDevice(id) {
+    return $Call.ByID(1125007708, id);
+}
+
+/**
+ * RenameDevice 修改设备显示名。
+ * @param {string} id
+ * @param {string} name
+ * @returns {$CancellablePromise<void>}
+ */
+export function RenameDevice(id, name) {
+    return $Call.ByID(649203106, id, name);
+}
+
+/**
+ * StartDevice 启动指定设备；已经运行时直接返回其地址。
+ * @param {string} id
+ * @returns {$CancellablePromise<$models.Device>}
+ */
+export function StartDevice(id) {
+    return $Call.ByID(953077664, id).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType0($result);
     }));
 }
 
 /**
+ * StartWorker 启动（必要时创建）默认设备，返回它的访问地址。
+ * 兼容旧调用方：不指定设备时总是用列表里的第一台。
+ * @param {string} workspace
+ * @returns {$CancellablePromise<$models.Endpoint>}
+ */
+export function StartWorker(workspace) {
+    return $Call.ByID(177529408, workspace).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
+}
+
+/**
+ * StopDevice 停止设备但保留数据目录，下次启动还是同一台设备。
+ * @param {string} id
+ * @returns {$CancellablePromise<void>}
+ */
+export function StopDevice(id) {
+    return $Call.ByID(1772813176, id);
+}
+
+/**
+ * StopWorker 停止所有本机设备（退出时调用）。
  * @returns {$CancellablePromise<void>}
  */
 export function StopWorker() {
@@ -47,9 +111,11 @@ export function StopWorker() {
  */
 export function WorkerEndpoint() {
     return $Call.ByID(2331902561).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
+        return $$createType2($result);
     }));
 }
 
 // Private type creation functions
-const $$createType0 = $models.Endpoint.createFrom;
+const $$createType0 = $models.Device.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $models.Endpoint.createFrom;

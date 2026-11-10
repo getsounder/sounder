@@ -6,6 +6,104 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+/**
+ * Device 是本机的一个 Worker 运行环境（一个容器 / 一个进程）。
+ * 每个设备有独立的数据目录，因此会话、历史互不干扰。
+ */
+export class Device {
+    /**
+     * Creates a new Device instance.
+     * @param {Partial<Device>} [$$source = {}] - The source object to create the Device.
+     */
+    constructor($$source = {}) {
+        if (!("id" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (!("kind" in $$source)) {
+            /**
+             * desktop-container | desktop-process
+             * @member
+             * @type {string}
+             */
+            this["kind"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["container"] = undefined;
+        }
+        if (!("dataDir" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["dataDir"] = "";
+        }
+        if (!("createdAt" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["createdAt"] = "0001-01-01T00:00:00.000Z";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * 运行时字段（不落盘）
+             * running | stopped
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["baseUrl"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["token"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {boolean | undefined}
+             */
+            this["active"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new Device instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {Device}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new Device(/** @type {Partial<Device>} */($$parsedSource));
+    }
+}
+
 export class Endpoint {
     /**
      * Creates a new Endpoint instance.
@@ -33,6 +131,13 @@ export class Endpoint {
              * @type {string}
              */
             this["mode"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["deviceId"] = undefined;
         }
 
         Object.assign(this, $$source);
