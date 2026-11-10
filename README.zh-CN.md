@@ -61,6 +61,20 @@ open http://localhost:3000
 
 `.env` 里的 `SOUNDER_TOKEN` 同时用于网页登录和 Gateway 鉴权。
 
+## 使用本地 Ollama
+
+```bash
+ollama pull qwen2.5:3b        # 必须支持 tools；llama2 不支持工具调用
+# .env
+#   MODEL=ollama/qwen2.5:3b
+#   OLLAMA_HOST=http://host.docker.internal:11434/v1
+docker compose up -d sounder-worker
+```
+
+Worker 会自动给每个会话写入 `ollama` provider 的 `models.json`，不需要手工配置 PiG。
+其他 OpenAI 兼容的本地服务（LM Studio、llama.cpp）用 `-models-file` 或
+`SOUNDER_MODELS_FILE` 指定配置。
+
 ## 从源码运行
 
 ```bash

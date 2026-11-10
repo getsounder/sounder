@@ -65,6 +65,21 @@ the control plane uses the first to call the gateway, and the gateway uses both 
 authenticate cloud workers and device-key tokens. They have nothing to do with
 user login — the web UI signs in with a regular account.
 
+## Local model with Ollama
+
+```bash
+ollama pull qwen2.5:3b        # 必须支持 tools；llama2 不支持工具调用
+# .env
+#   MODEL=ollama/qwen2.5:3b
+#   OLLAMA_HOST=http://host.docker.internal:11434/v1
+docker compose up -d sounder-worker
+```
+
+The worker writes a per-session `models.json` for the `ollama` provider, so no
+manual PiG configuration is needed. For other OpenAI-compatible servers
+(LM Studio, llama.cpp), pass `-models-file /path/to/models.json` or set
+`SOUNDER_MODELS_FILE`.
+
 ## Run from source
 
 ```bash

@@ -131,6 +131,16 @@ func (m *Memory) RenameDevice(id, userID, name string) error {
 	return nil
 }
 
+func (m *Memory) GetDevice(id, userID string) (Device, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	d, ok := m.devices[id]
+	if !ok || d.UserID != userID {
+		return Device{}, ErrNotFound
+	}
+	return d, nil
+}
+
 func (m *Memory) DeleteDevice(id, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

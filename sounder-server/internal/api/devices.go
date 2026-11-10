@@ -254,15 +254,21 @@ func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
 	ctx := authFrom(r)
 	id := r.PathValue("id")
 
+	dev, err := s.store.GetDevice(id, ctx.UserID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "device not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	// 云端设备连同它的 Worker 一起回收。
-	if devices, err := s.store.ListDevices(ctx.UserID); err == nil && s.prov.Enabled() {
-		for _, d := range devices {
-			if d.ID == id && d.Kind == "cloud" {
-				if err := s.prov.Delete(r.Context(), d.WorkerID); err != nil {
-					writeErr(w, http.StatusBadGateway, "销毁 Worker 失败: "+err.Error())
-					return
-				}
-			}
+	if dev.Kind == "cloud" && s.prov.Enabled() {
+		if err := s.prov.Delete(r.Context(), dev.WorkerID); err != nil {
+			writeErr(w, http.StatusBadGateway, "销毁 Worker 失败: "+err.Error())
+			return
 		}
 	}
 
@@ -274,6 +280,8 @@ func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// 设备删除后，它上面的会话无法再访问；一并清掉控制面记录。
+	_ = s.store.DeleteByWorker(dev.WorkerID, ctx.UserID)
 	s.audit(r, "device.delete", map[string]any{"deviceId": id})
 	w.WriteHeader(http.StatusNoContent)
 }
