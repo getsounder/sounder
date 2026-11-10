@@ -433,8 +433,17 @@
   details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 
   @media (max-width: 720px) {
-    header { padding: 0 10px; gap: 8px; }
+    html, body { overflow-x: hidden; }
+    header { padding: 0 10px; gap: 6px; overflow: hidden; }
     header input { max-width: none; }
+    .brand-name { display: none; }
+    #userChip { display: none; }
+    #deviceChip { max-width: 122px; }
+    .status { gap: 4px; }
+    #findBar { left: 8px; right: 8px; }
+    #findBar input { flex: 1; width: auto; min-width: 0; }
+    .msg, .approval, .ask, .tool, .error { max-width: 100%; }
+    .approval pre, .code pre { max-width: 100%; }
     .workspace-chip { display: none; }
     #menuBtn { display: inline-block; }
     .status span { display: none; }
@@ -1036,10 +1045,17 @@ function renderIdentities() {
   }
 }
 
-$("userChip").onclick = async () => {
+async function openAccountSelf() {
   try { await refreshMe(); } catch (_) {}
   openAccount();
-};
+}
+
+$("userChip").onclick = openAccountSelf;
+
+// 窄屏隐藏了账号 chip，点品牌标识也能进账号页
+document.querySelector(".brand").addEventListener("click", () => {
+  if (window.innerWidth <= 720 && !$("userChip").hidden) openAccountSelf();
+});
 $("closeAccount").onclick = () => { $("accountModal").hidden = true; };
 $("logoutBtn").onclick = async () => {
   try { await api("/v1/auth/logout", { method: "POST" }); } catch (_) {}
