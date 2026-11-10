@@ -167,6 +167,21 @@ services:
       retries: 10
     logging: *logging
 
+  sounder-admin-web:
+    build:
+      context: ./sounder-admin-web
+    ports:
+      - "${ADMIN_WEB_PORT:-3001}:80"
+    depends_on:
+      sounder-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
   sounder-worker:
     build:
       context: ./sounder-worker

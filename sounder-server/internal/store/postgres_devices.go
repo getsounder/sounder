@@ -126,3 +126,23 @@ func (p *Postgres) SetQuota(q Quota) error {
 	)
 	return err
 }
+
+func (p *Postgres) ListAllDevices() ([]Device, error) {
+	const q = `
+SELECT id, user_id, worker_id, name, kind, form, platform, version, last_seen_at, created_at
+FROM devices ORDER BY last_seen_at DESC LIMIT 500`
+	rows, err := p.db.Query(q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Device
+	for rows.Next() {
+		var d Device
+		if err := rows.Scan(&d.ID, &d.UserID, &d.WorkerID, &d.Name, &d.Kind, &d.Form, &d.Platform, &d.Version, &d.LastSeenAt, &d.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}

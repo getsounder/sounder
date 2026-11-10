@@ -104,6 +104,17 @@ func (m *Memory) ListDevices(userID string) ([]Device, error) {
 	return out, nil
 }
 
+func (m *Memory) ListAllDevices() ([]Device, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]Device, 0, len(m.devices))
+	for _, d := range m.devices {
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].LastSeenAt.After(out[j].LastSeenAt) })
+	return out, nil
+}
+
 func (m *Memory) RenameDevice(id, userID, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {

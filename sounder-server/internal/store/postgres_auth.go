@@ -345,3 +345,33 @@ func (p *Postgres) Audit(e AuditEvent) error {
 	}
 	return nil
 }
+
+// ListUsers 供管理后台分页列出用户。
+func (p *Postgres) ListUsers(limit, offset int) ([]User, int, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var total int
+	if err := p.db.QueryRow(`SELECT count(*) FROM users`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := p.db.Query(
+		`SELECT id, email, email_verified, display_name, avatar_url, is_admin, status, created_at, updated_at
+		 FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, u)
+	}
+	return out, total, rows.Err()
+}

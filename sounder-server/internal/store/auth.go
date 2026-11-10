@@ -68,6 +68,7 @@ type AuthStore interface {
 	UpdateUser(u User) error
 	GetUser(id string) (User, error)
 	GetUserByEmail(email string) (User, error)
+	ListUsers(limit, offset int) ([]User, int, error)
 
 	CreateIdentity(i Identity) error
 	GetIdentity(provider, subject string) (Identity, error)

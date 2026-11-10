@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sounder Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%234f7cff'/%3E%3Ctext x='32' y='46' font-family='-apple-system,Helvetica,Arial' font-size='38' font-weight='800' fill='white' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0a0a0c; --panel: #0d0d10; --panel2: #131317; --panel3: #1a1a20;
+    --line: #232329; --line-strong: #33333c;
+    --fg: #ececf1; --muted: #8b8b96; --muted2: #5f5f6b;
+    --accent: #4f7cff; --ok: #3ecf8e; --warn: #e5a13a; --err: #f0647a;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: #4f7cff38; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #2a2a31; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+  a { color: var(--accent); }
+  input, select, textarea, button {
+    font: inherit; color: var(--fg); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; outline: none;
+  }
+  input:focus, select:focus { border-color: #3b4b6d; }
+  input::placeholder { color: var(--muted2); }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--line-strong); background: var(--panel3); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #5b86ff; }
+  button.danger { background: #2a1418; border-color: #4d212a; color: #ffb3ba; }
+  button.danger:hover { background: #331a1f; }
+  button.sm { padding: 3px 8px; font-size: 11.5px; border-radius: 6px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* 登录 */
+  #login { height: 100%; display: grid; place-items: center; padding: 20px; }
+  .login-card { width: min(380px, 100%); background: #0f0f13; border: 1px solid var(--line-strong); border-radius: 12px; padding: 22px; }
+  .login-card h1 { margin: 0 0 4px; font-size: 17px; }
+  .login-card p { margin: 0 0 16px; color: var(--muted); font-size: 12px; }
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .field label { font-size: 11.5px; color: var(--muted); }
+  .msg { font-size: 12px; min-height: 18px; color: var(--err); }
+
+  /* 布局 */
+  #app { display: grid; grid-template-columns: 208px 1fr; height: 100%; }
+  aside { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 14px 14px 12px; font-weight: 600; }
+  .brand .logo { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; background: var(--accent); }
+  .brand em { font-style: normal; color: var(--muted2); font-weight: 400; }
+  nav { padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; }
+  nav a {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px;
+    color: var(--muted); text-decoration: none; font-size: 12.5px;
+  }
+  nav a:hover { background: #15151a; color: var(--fg); }
+  nav a.on { background: #1a1a21; color: var(--fg); }
+  .side-foot { margin-top: auto; padding: 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted2); }
+
+  main { min-width: 0; display: flex; flex-direction: column; }
+  .topbar { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 16px; border-bottom: 1px solid var(--line); background: #0b0b0e; }
+  .topbar h2 { margin: 0; font-size: 13.5px; font-weight: 600; }
+  .topbar .spacer { flex: 1; }
+  .topbar .who { font-size: 11.5px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #view { padding: 18px 20px 40px; overflow: auto; }
+
+  /* 卡片 / 表格 */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card .k { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .card .v { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .card .s { font-size: 11px; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead th {
+    text-align: left; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted2); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap;
+  }
+  tbody td { padding: 8px 10px; border-bottom: 1px solid #17171c; vertical-align: middle; }
+  tbody tr:hover { background: #101014; }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--muted2); margin-right: 6px; }
+  .dot.on { background: var(--ok); }
+  .dot.warn { background: var(--warn); }
+  .tag {
+    display: inline-block; padding: 1px 7px; border-radius: 5px; font-size: 10.5px;
+    border: 1px solid var(--line-strong); color: var(--muted); background: #14141a;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .tag.ok { color: #9fe8c5; border-color: #2c5b47; background: #10221b; }
+  .tag.warn { color: #f0d3a4; border-color: #5c4a20; background: #221c10; }
+  .tag.err { color: #ffb3ba; border-color: #5c2630; background: #211012; }
+  .empty { padding: 30px; text-align: center; color: var(--muted2); font-size: 12.5px; }
+  .row-actions { display: flex; gap: 6px; }
+
+  /* 配额弹窗 */
+  .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: #000a; backdrop-filter: blur(3px); }
+  .modal[hidden] { display: none; }
+  .sheet { width: min(420px, 100%); background: #0f0f13; border: 1px solid var(--line-strong); border-radius: 12px; padding: 18px; }
+  .sheet h3 { margin: 0 0 4px; font-size: 15px; }
+  .sheet .sub { margin: 0 0 14px; color: var(--muted); font-size: 11.5px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .actions button { flex: 1; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 10px);
+    z-index: 60; padding: 7px 13px; border-radius: 999px; font-size: 12px;
+    background: #15151b; border: 1px solid var(--line-strong); color: var(--fg);
+    box-shadow: 0 10px 30px #0009; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 720px) {
+    #app { grid-template-columns: 1fr; }
+    aside { position: fixed; inset: 0 auto 0 0; width: 210px; z-index: 20; transform: translateX(-101%); transition: transform .18s; }
+    body.menu aside { transform: translateX(0); }
+    #menuBtn { display: inline-block; }
+    #view { padding: 12px; }
+  }
+  #menuBtn { display: none; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form class="login-card" id="loginForm">
+    <h1>Sounder Admin</h1>
+    <p>用管理员账号登录控制面。</p>
+    <div class="field"><label>邮箱</label><input id="email" type="email" autocomplete="username" required></div>
+    <div class="field"><label>密码</label><input id="password" type="password" autocomplete="current-password" required></div>
+    <div class="msg" id="loginMsg"></div>
+    <button class="primary" type="submit" id="loginBtn" style="width:100%">登录</button>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <aside>
+    <div class="brand"><span class="logo">A</span><span>Sound<em>er</em> admin</span></div>
+    <nav id="nav">
+      <a href="#/overview" data-view="overview">概览</a>
+      <a href="#/users" data-view="users">用户</a>
+      <a href="#/devices" data-view="devices">设备</a>
+      <a href="#/sessions" data-view="sessions">会话</a>
+      <a href="#/workers" data-view="workers">Worker</a>
+    </nav>
+    <div class="side-foot mono" id="buildInfo">Sounder Admin</div>
+  </aside>
+  <main>
+    <div class="topbar">
+      <button id="menuBtn" class="sm" type="button">☰</button>
+      <h2 id="title">概览</h2>
+      <span class="spacer"></span>
+      <span class="who" id="who"></span>
+      <button class="sm" id="logout" type="button">退出</button>
+    </div>
+    <div id="view"></div>
+  </main>
+</div>
+
+<div class="modal" id="quotaModal" hidden>
+  <div class="sheet">
+    <h3>调整配额</h3>
+    <p class="sub" id="quotaWho"></p>
+    <div class="grid2">
+      <div class="field"><label>云端设备数</label><input id="qMaxDevices" type="number" min="1"></div>
+      <div class="field"><label>vCPU</label><input id="qCpu" type="number" min="1"></div>
+      <div class="field"><label>内存 MB</label><input id="qMem" type="number" min="512"></div>
+      <div class="field"><label>磁盘 GB</label><input id="qDisk" type="number" min="1"></div>
+    </div>
+    <div class="actions">
+      <button type="button" id="qCancel">取消</button>
+      <button class="primary" type="button" id="qSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const TOKEN_KEY = "sounder.admin.token";
+const state = {
+  token: localStorage.getItem(TOKEN_KEY) || "",
+  me: null,
+  view: "overview",
+  quotaUser: null,
+};
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => el.classList.remove("show"), 1800);
+}
+
+class ApiError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: {
+      "Content-Type": "application/json",
+      ...(state.token ? { Authorization: "Bearer " + state.token } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    let msg = res.status + " " + res.statusText;
+    try {
+      const text = await res.text();
+      if (text) { try { msg = JSON.parse(text).error || text; } catch { msg = text; } }
+    } catch {}
+    throw new ApiError(msg, res.status);
+  }
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("json") ? res.json() : res.text();
+}
+
+// ---------- 登录 ----------
+function showLogin(msg = "") {
+  $("app").hidden = true;
+  $("login").hidden = false;
+  $("loginMsg").textContent = msg;
+}
+
+async function login(e) {
+  e.preventDefault();
+  $("loginBtn").disabled = true;
+  $("loginMsg").textContent = "";
+  try {
+    const r = await api("/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: $("email").value.trim(), password: $("password").value }),
+    });
+    state.token = r.token;
+    localStorage.setItem(TOKEN_KEY, r.token);
+    await enter();
+  } catch (err) {
+    $("loginMsg").textContent = err.message || "登录失败";
+  } finally {
+    $("loginBtn").disabled = false;
+  }
+}
+
+async function enter() {
+  try {
+    state.me = await api("/v1/auth/me");
+  } catch (e) {
+    localStorage.removeItem(TOKEN_KEY);
+    state.token = "";
+    showLogin("登录已过期，请重新登录");
+    return;
+  }
+  const isAdmin = state.me.admin || (state.me.user && state.me.user.isAdmin);
+  if (!isAdmin) {
+    localStorage.removeItem(TOKEN_KEY);
+    state.token = "";
+    showLogin("该账号不是管理员");
+    return;
+  }
+  $("login").hidden = true;
+  $("app").hidden = false;
+  $("who").textContent = state.me.user.email || state.me.user.id;
+  route();
+}
+
+$("loginForm").onsubmit = login;
+$("logout").onclick = async () => {
+  try { await api("/v1/auth/logout", { method: "POST" }); } catch {}
+  localStorage.removeItem(TOKEN_KEY);
+  state.token = "";
+  showLogin("");
+};
+
+// ---------- 路由 ----------
+const TITLES = { overview: "概览", users: "用户", devices: "设备", sessions: "会话", workers: "Worker" };
+
+function route() {
+  const v = (location.hash.replace("#/", "") || "overview").split("?")[0];
+  state.view = TITLES[v] ? v : "overview";
+  $("title").textContent = TITLES[state.view];
+  for (const a of document.querySelectorAll("#nav a")) a.classList.toggle("on", a.dataset.view === state.view);
+  document.body.classList.remove("menu");
+  render().catch((e) => {
+    $("view").innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+  });
+}
+
+async function render() {
+  if (state.view === "overview") return renderOverview();
+  if (state.view === "users") return renderUsers();
+  if (state.view === "devices") return renderDevices();
+  if (state.view === "sessions") return renderSessions();
+  return renderWorkers();
+}
+
+window.addEventListener("hashchange", route);
+$("menuBtn").onclick = () => document.body.classList.toggle("menu");
+
+// ---------- 概览 ----------
+async function renderOverview() {
+  const s = await api("/v1/admin/stats");
+  const online = s.devices ? Math.round((s.onlineDevices / s.devices) * 100) : 0;
+  $("view").innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="k">用户</div><div class="v">${s.users}</div><div class="s">账号总数</div></div>
+      <div class="card"><div class="k">设备</div><div class="v">${s.devices}</div><div class="s">${s.onlineDevices} 在线 · 云端 ${s.cloudDevices}</div></div>
+      <div class="card"><div class="k">在线率</div><div class="v">${online}%</div><div class="s">设备在线比例</div></div>
+      <div class="card"><div class="k">会话</div><div class="v">${s.sessions}</div><div class="s">控制面记录</div></div>
+      <div class="card"><div class="k">Worker</div><div class="v">${s.workers}</div><div class="s">网关在线</div></div>
+    </div>
+    <div class="card">
+      <div class="k">说明</div>
+      <div class="s" style="margin-top:8px;line-height:1.7">
+        设备是用户绑定的 Worker 运行环境；云端设备由 provisioner 按配额创建。<br>
+        左侧可以查看用户、设备、会话与网关上在线的 Worker。
+      </div>
+    </div>`;
+}
+
+// ---------- 用户 ----------
+async function renderUsers() {
+  const data = await api("/v1/admin/users?limit=100");
+  const rows = (data.users || []).map((u) => `
+    <tr>
+      <td><div>${esc(u.email || "—")}</div><div class="mono" style="color:var(--muted2);font-size:11px">${esc(u.id)}</div></td>
+      <td>${esc(u.displayName || "—")}</td>
+      <td>${u.isAdmin ? '<span class="tag warn">admin</span>' : '<span class="tag">user</span>'}</td>
+      <td>${u.deviceCount} <span style="color:var(--muted2)">/ 云端 ${u.cloudDevices}</span></td>
+      <td class="mono">${u.quota ? `${u.quota.maxDevices} 台 · ${u.quota.deviceCpu}C/${Math.round(u.quota.deviceMemMb / 1024)}G/${u.quota.deviceDiskGb}G` : "—"}</td>
+      <td>${(u.createdAt || "").slice(0, 10)}</td>
+      <td><button class="sm" data-quota="${esc(u.id)}">编辑配额</button></td>
+    </tr>`).join("");
+  $("view").innerHTML = `
+    <table>
+      <thead><tr><th>用户</th><th>昵称</th><th>角色</th><th>设备</th><th>配额</th><th>注册</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" class="empty">还没有用户</td></tr>'}</tbody>
+    </table>
+    <p class="mono" style="color:var(--muted2);font-size:11px;margin-top:10px">共 ${data.total} 个用户</p>`;
+  for (const btn of $("view").querySelectorAll("[data-quota]")) {
+    btn.onclick = () => openQuota((data.users || []).find((u) => u.id === btn.dataset.quota));
+  }
+}
+
+function openQuota(user) {
+  if (!user) return;
+  state.quotaUser = user;
+  $("quotaWho").textContent = user.email || user.id;
+  $("qMaxDevices").value = user.quota.maxDevices;
+  $("qCpu").value = user.quota.deviceCpu;
+  $("qMem").value = user.quota.deviceMemMb;
+  $("qDisk").value = user.quota.deviceDiskGb;
+  $("quotaModal").hidden = false;
+}
+
+$("qCancel").onclick = () => { $("quotaModal").hidden = true; };
+$("quotaModal").onclick = (e) => { if (e.target === $("quotaModal")) $("quotaModal").hidden = true; };
+$("qSave").onclick = async () => {
+  const u = state.quotaUser;
+  if (!u) return;
+  $("qSave").disabled = true;
+  try {
+    await api("/v1/quota", {
+      method: "PUT",
+      body: JSON.stringify({
+        userId: u.id,
+        maxDevices: Number($("qMaxDevices").value) || 0,
+        deviceCpu: Number($("qCpu").value) || 0,
+        deviceMemMb: Number($("qMem").value) || 0,
+        deviceDiskGb: Number($("qDisk").value) || 0,
+      }),
+    });
+    $("quotaModal").hidden = true;
+    toast("配额已更新");
+    render();
+  } catch (e) {
+    toast(e.message || "更新失败");
+  } finally {
+    $("qSave").disabled = false;
+  }
+};
+
+// ---------- 设备 ----------
+const FORM_LABEL = { computer: "Computer", sandbox: "Sandbox" };
+
+async function renderDevices() {
+  const data = await api("/v1/admin/devices");
+  const rows = (data.devices || []).map((d) => `
+    <tr>
+      <td><div>${esc(d.name || d.workerId)}</div><div class="mono" style="color:var(--muted2);font-size:11px">${esc(d.workerId)}</div></td>
+      <td>${esc(d.ownerEmail || d.userId)}</td>
+      <td><span class="tag">${esc(d.kind)}</span> <span class="tag">${FORM_LABEL[d.form] || esc(d.form)}</span></td>
+      <td><span class="dot ${d.status === "online" ? "on" : ""}"></span>${d.status === "online" ? "在线" : "离线"}</td>
+      <td class="mono">${d.capacity ? d.used + "/" + d.capacity : "—"}</td>
+      <td class="mono">${(d.lastSeenAt || "").slice(0, 16).replace("T", " ")}</td>
+      <td class="row-actions">
+        ${d.kind === "cloud" ? `<button class="sm" data-power="${esc(d.id)}" data-online="${d.status === "online" ? 1 : 0}">${d.status === "online" ? "关机" : "开机"}</button>
+        <button class="sm danger" data-del="${esc(d.id)}">删除</button>` : '<span class="mono" style="color:var(--muted2);font-size:11px">客户端管理</span>'}
+      </td>
+    </tr>`).join("");
+  $("view").innerHTML = `
+    <table>
+      <thead><tr><th>设备</th><th>归属</th><th>类型</th><th>状态</th><th>占用</th><th>最近活跃</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" class="empty">还没有设备</td></tr>'}</tbody>
+    </table>`;
+
+  for (const btn of $("view").querySelectorAll("[data-power]")) {
+    btn.onclick = async () => {
+      const online = btn.dataset.online === "1";
+      btn.disabled = true;
+      try {
+        await api(`/v1/devices/${encodeURIComponent(btn.dataset.power)}/${online ? "stop" : "start"}`, { method: "POST" });
+        toast(online ? "正在关机…" : "正在开机…");
+        setTimeout(render, 2000);
+      } catch (e) {
+        toast(e.message || "操作失败");
+        btn.disabled = false;
+      }
+    };
+  }
+  for (const btn of $("view").querySelectorAll("[data-del]")) {
+    btn.onclick = async () => {
+      if (!confirm("删除该设备？云端设备会连同容器/卷一起回收。")) return;
+      btn.disabled = true;
+      try {
+        await api(`/v1/devices/${encodeURIComponent(btn.dataset.del)}`, { method: "DELETE" });
+        toast("已删除");
+        render();
+      } catch (e) {
+        toast(e.message || "删除失败");
+        btn.disabled = false;
+      }
+    };
+  }
+}
+
+// ---------- 会话 ----------
+async function renderSessions() {
+  const data = await api("/v1/admin/sessions");
+  const rows = (data.sessions || []).map((s) => `
+    <tr>
+      <td class="mono">${esc(s.id)}</td>
+      <td>${esc(s.ownerEmail || s.ownerId || "—")}</td>
+      <td class="mono">${esc(s.workerId)}</td>
+      <td>${esc(s.model || "—")}</td>
+      <td><span class="tag ${s.state === "running" ? "warn" : "ok"}">${esc(s.state)}</span></td>
+      <td class="mono">${(s.createdAt || "").slice(0, 16).replace("T", " ")}</td>
+      <td><button class="sm danger" data-sdel="${esc(s.id)}">删除</button></td>
+    </tr>`).join("");
+  $("view").innerHTML = `
+    <table>
+      <thead><tr><th>会话</th><th>归属</th><th>设备</th><th>模型</th><th>状态</th><th>创建</th><th></th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" class="empty">还没有会话</td></tr>'}</tbody>
+    </table>`;
+  for (const btn of $("view").querySelectorAll("[data-sdel]")) {
+    btn.onclick = async () => {
+      if (!confirm("删除该会话？")) return;
+      btn.disabled = true;
+      try {
+        await api(`/v1/sessions/${encodeURIComponent(btn.dataset.sdel)}`, { method: "DELETE" });
+        toast("已删除");
+        render();
+      } catch (e) {
+        toast(e.message || "删除失败");
+        btn.disabled = false;
+      }
+    };
+  }
+}
+
+// ---------- Worker ----------
+async function renderWorkers() {
+  const data = await api("/v1/workers");
+  const rows = (data.workers || []).map((w) => `
+    <tr>
+      <td class="mono">${esc(w.id)}</td>
+      <td><span class="tag">${esc(w.kind)}</span></td>
+      <td class="mono">${esc(w.version || "—")}</td>
+      <td class="mono">${w.used}/${w.capacity}</td>
+      <td class="mono">${esc(w.remoteAddr || "—")}</td>
+      <td class="mono">${(w.connectedAt || "").slice(0, 16).replace("T", " ")}</td>
+    </tr>`).join("");
+  $("view").innerHTML = `
+    <table>
+      <thead><tr><th>Worker</th><th>类型</th><th>版本</th><th>占用</th><th>来源</th><th>连接时间</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">网关上没有在线 Worker</td></tr>'}</tbody>
+    </table>`;
+}
+
+// ---------- 启动 ----------
+if (state.token) {
+  enter();
+} else {
+  showLogin("");
+}
+</script>
+</body>
+</html>
