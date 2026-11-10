@@ -53,6 +53,45 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .workspace-chip:hover { color: var(--fg); border-color: var(--line-strong); }
+  .device-chip {
+    display: flex; align-items: center; gap: 6px; max-width: 260px;
+    padding: 3px 9px; border-radius: 6px; border: 1px solid var(--line);
+    background: #121216; color: var(--fg); font-size: 12px;
+  }
+  .device-chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted2); flex: none; }
+  .device-chip i.on { background: var(--ok); }
+  .device-chip .d-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .device-menu {
+    position: fixed; top: 52px; left: 12px; z-index: 45; width: min(340px, calc(100vw - 24px));
+    background: #0f0f13; border: 1px solid var(--line-strong); border-radius: 10px;
+    box-shadow: 0 18px 50px #000a; overflow: hidden;
+  }
+  .device-menu .dm-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--line);
+  }
+  .device-menu .dm-title { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .device-menu .dm-quota { font-size: 10.5px; color: var(--muted2); }
+  .device-menu ul { list-style: none; margin: 0; padding: 4px; max-height: 46vh; overflow: auto; }
+  .device-menu .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted2); flex: none; }
+  .device-menu .dot.on { background: var(--ok); }
+  .device-menu li {
+    display: flex; align-items: center; gap: 8px; padding: 7px 8px;
+    border-radius: 6px; cursor: pointer; color: var(--fg);
+  }
+  .device-menu li:hover { background: #16161b; }
+  .device-menu li.on { background: #1a1a21; }
+  .device-menu li.empty { cursor: default; color: var(--muted2); font-size: 12px; justify-content: center; padding: 14px; }
+  .device-menu li.empty:hover { background: transparent; }
+  .device-menu .dm-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+  .device-menu .dm-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .device-menu .dm-sub { font-size: 10.5px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .device-menu .dm-acts { display: flex; gap: 4px; opacity: 0; }
+  .device-menu li:hover .dm-acts { opacity: 1; }
+  .device-menu .dm-acts button { padding: 1px 6px; font-size: 10.5px; border-radius: 5px; }
+  .device-menu .dm-foot { padding: 8px; border-top: 1px solid var(--line); display: flex; gap: 6px; }
+  .device-menu .dm-foot button { flex: 1; font-size: 12px; padding: 6px; }
   .status {
     margin-left: auto; display: flex; align-items: center; gap: 6px;
     font-size: 11.5px; color: var(--muted2); transition: color .2s;
@@ -155,6 +194,8 @@
   }
   .empty-state h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
   .empty-state p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .empty-device { margin: 22px auto 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .empty-device p { margin: 0; font-size: 11px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .kbd-hints { margin-top: 20px; display: flex; gap: 14px; justify-content: center; color: var(--muted2); font-size: 11px; }
 
   .msg {
@@ -336,14 +377,22 @@
   <header>
     <button id="menuBtn" title="会话列表" aria-label="会话列表">☰</button>
     <div class="brand"><span class="logo">S</span><span class="brand-name">Sound<em>er</em></span></div>
+    <button id="deviceChip" class="device-chip" hidden title="当前设备（点击切换）"><i id="deviceDot"></i><span class="d-name" id="deviceName">设备</span></button>
     <button id="wsChip" class="workspace-chip" hidden title="当前会话的工作区（点击复制）"></button>
     <button id="userChip" hidden title="账号">账号</button>
     <button id="settingsBtn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
     <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
   </header>
   <div id="setup" hidden>
-    <input id="api" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="云端 API 地址，如 https://sounder.example.com">
+    <input id="api" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="服务器地址，如 https://sounder.example.com（仅首次连接需要）">
     <button id="applyApi" class="primary">连接</button>
+  </div>
+  <div id="deviceMenu" class="device-menu" hidden>
+    <div class="dm-head"><span class="dm-title">设备</span><span class="dm-quota" id="deviceQuota"></span></div>
+    <ul id="deviceList"></ul>
+    <div class="dm-foot">
+      <button id="addCloudDevice" type="button">＋ 添加云端设备</button>
+    </div>
   </div>
   <main>
     <aside>
@@ -510,6 +559,9 @@ const state = {
   apiBase: trimBase(params.get("api") || localStorage.getItem("sounder.api")),
   token: params.get("token") || localStorage.getItem("sounder.token") || "",
   sessions: [],
+  devices: [],
+  device: "",
+  quota: null,
   capacity: 0,
   used: 0,
   current: null,
@@ -695,6 +747,7 @@ function updateUserUI() {
 async function afterLogin() {
   await refreshMe();
   showAuth(false);
+  await loadDevices();
   await loadSessions();
 }
 
@@ -717,6 +770,7 @@ async function bootstrap() {
   try {
     await refreshMe();
     showAuth(false);
+    await loadDevices();
     await loadSessions();
   } catch (e) {
     if (e.status === 401) showAuth(true);
@@ -871,6 +925,24 @@ function renderHome() {
   if (state.current) return;
   logEl().innerHTML = HOME_HTML;
   state.bubble = null;
+
+  // 云端模式还没有设备时，直接给一个"添加设备"的入口，而不是让用户去翻菜单。
+  if (!localWorkerMode && !state.devices.length) {
+    const box = document.createElement("div");
+    box.className = "empty-device";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "primary";
+    btn.textContent = "＋ 添加云端设备";
+    btn.onclick = createCloudDevice;
+    box.appendChild(btn);
+    const hint = document.createElement("p");
+    hint.textContent = state.quota
+      ? `配额：云端设备 ${state.cloudDevices || 0}/${state.quota.maxDevices} · ${state.quota.deviceCpu}C / ${Math.round((state.quota.deviceMemMb || 0) / 1024)}G / ${state.quota.deviceDiskGb}G`
+      : "登录后可以在这里添加云端设备";
+    box.appendChild(hint);
+    logEl().appendChild(box);
+  }
 }
 
 async function loadHistory(sessionId) {
@@ -1113,7 +1185,8 @@ function showError(err) {
 }
 
 async function loadSessions() {
-  const data = await api("/v1/sessions");
+  const qs = state.device ? "?workerId=" + encodeURIComponent(state.device) : "";
+  const data = await api("/v1/sessions" + qs);
   // 本地 Worker 返回对象（id/model/state/title），云端 server 也返回对象；老版本可能只给 ID。
   state.sessions = (data.sessions || []).map((s) =>
     typeof s === "string" ? { id: s, model: "", state: "" } : s
@@ -1274,6 +1347,7 @@ async function createSession() {
     const body = {};
     if (cfg.model) body.model = cfg.model;
     if (cfg.workspace) body.workspace = cfg.workspace;
+    if (state.device) body.workerId = state.device;
     const s = await api("/v1/sessions", { method: "POST", body: JSON.stringify(body) });
     state.sessions.unshift(s);
     renderSessions();
@@ -1326,6 +1400,21 @@ async function cancelTurn() {
 // 顶栏工作区 + 输入框下方的模型 chip，跟着当前会话/设置走。
 function updateSessionChrome() {
   const s = state.current;
+
+  // 设备 chip：云端模式下显示当前设备与在线状态；本地 Worker 直连时不显示。
+  const dChip = $("deviceChip");
+  if (localWorkerMode) {
+    dChip.hidden = true;
+  } else {
+    const dev = currentDevice();
+    dChip.hidden = false;
+    $("deviceName").textContent = dev ? (dev.name || dev.workerId) : (state.devices.length ? "选择设备" : "添加设备");
+    $("deviceDot").className = dev && dev.status === "online" ? "on" : "";
+    dChip.title = dev
+      ? `${dev.name || dev.workerId}\n${dev.status === "online" ? "在线" : "离线"}`
+      : "点击选择或添加设备";
+  }
+
   const chip = $("wsChip");
   const ws = s && s.workspace;
   if (ws) {
@@ -1535,6 +1624,146 @@ function openSettings() {
     : "连接后显示";
   $("settingsModal").hidden = false;
 }
+
+// ---------- 设备 ----------
+const KIND_LABELS = { cloud: "云端", "desktop-container": "桌面容器", "desktop-process": "桌面进程", mobile: "移动端" };
+const DEVICE_KEY = "sounder.device";
+
+function currentDevice() {
+  return state.devices.find((d) => d.workerId === state.device) || null;
+}
+
+async function loadDevices() {
+  if (localWorkerMode) return null;
+  const data = await api("/v1/devices");
+  state.devices = data.devices || [];
+  state.quota = data.quota || null;
+  state.cloudDevices = data.cloudDevices || 0;
+
+  const saved = localStorage.getItem(DEVICE_KEY);
+  const pick =
+    state.devices.find((d) => d.workerId === saved) ||
+    state.devices.find((d) => d.status === "online") ||
+    state.devices[0] || null;
+  state.device = pick ? pick.workerId : "";
+  renderDeviceMenu();
+  updateSessionChrome();
+  return pick;
+}
+
+function renderDeviceMenu() {
+  const ul = $("deviceList");
+  const q = state.quota;
+  if (q) {
+    $("deviceQuota").textContent = `云端 ${state.cloudDevices || 0}/${q.maxDevices} · ${q.deviceCpu}C/${Math.round((q.deviceMemMb || 0) / 1024)}G/${q.deviceDiskGb}G`;
+  } else {
+    $("deviceQuota").textContent = "";
+  }
+
+  ul.innerHTML = "";
+  if (!state.devices.length) {
+    ul.innerHTML = '<li class="empty">还没有设备</li>';
+    return;
+  }
+  for (const d of state.devices) {
+    const li = document.createElement("li");
+    li.className = d.workerId === state.device ? "on" : "";
+    const kind = KIND_LABELS[d.kind] || d.kind || "设备";
+    const load = d.capacity ? `${d.used}/${d.capacity}` : "";
+    li.innerHTML = `<i class="dot ${d.status === "online" ? "on" : ""}"></i>` +
+      `<span class="dm-body"><span class="dm-name">${esc(d.name || d.workerId)}</span>` +
+      `<span class="dm-sub">${esc([kind, d.status === "online" ? "在线" : "离线", load].filter(Boolean).join(" · "))}</span></span>`;
+    li.querySelector("i.dot").className = "dot" + (d.status === "online" ? " on" : "");
+    li.onclick = () => selectDevice(d.workerId);
+
+    const acts = document.createElement("span");
+    acts.className = "dm-acts";
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.textContent = "改名";
+    rename.onclick = (e) => { e.stopPropagation(); renameDevice(d); };
+    const del = document.createElement("button");
+    del.type = "button";
+    del.textContent = "移除";
+    del.onclick = (e) => { e.stopPropagation(); removeDevice(d); };
+    acts.append(rename, del);
+    li.appendChild(acts);
+    ul.appendChild(li);
+  }
+}
+
+function selectDevice(workerId) {
+  state.device = workerId;
+  try { localStorage.setItem(DEVICE_KEY, workerId); } catch (_) {}
+  $("deviceMenu").hidden = true;
+  renderDeviceMenu();
+  updateSessionChrome();
+  state.current = null;
+  if (state.abort) { state.abort.abort(); state.abort = null; }
+  clearLog();
+  setRunning(false);
+  loadSessions().catch(showError);
+}
+
+async function createCloudDevice() {
+  const btn = $("addCloudDevice");
+  btn.disabled = true;
+  btn.textContent = "创建中…";
+  try {
+    const d = await api("/v1/devices", { method: "POST", body: JSON.stringify({ kind: "cloud" }) });
+    await loadDevices();
+    selectDevice(d.workerId || d.workerID || state.device);
+    toast("已添加设备");
+  } catch (e) {
+    toast(e.message || "添加失败");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "＋ 添加云端设备";
+  }
+}
+
+async function renameDevice(d) {
+  const name = prompt("设备名称", d.name || d.workerId);
+  if (!name) return;
+  try {
+    await api(`/v1/devices/${encodeURIComponent(d.id)}`, { method: "PATCH", body: JSON.stringify({ name }) });
+    await loadDevices();
+    toast("已重命名");
+  } catch (e) { toast(e.message || "重命名失败"); }
+}
+
+async function removeDevice(d) {
+  if (!confirm(`移除设备「${d.name || d.workerId}」？会话记录仍保留。`)) return;
+  try {
+    await api(`/v1/devices/${encodeURIComponent(d.id)}`, { method: "DELETE" });
+    if (state.device === d.workerId) {
+      state.device = "";
+      try { localStorage.removeItem(DEVICE_KEY); } catch (_) {}
+    }
+    await loadDevices();
+    await loadSessions();
+    toast("设备已移除");
+  } catch (e) { toast(e.message || "移除失败"); }
+}
+
+$("deviceChip").onclick = (e) => {
+  e.stopPropagation();
+  const menu = $("deviceMenu");
+  if (!menu.hidden) { menu.hidden = true; return; }
+  renderDeviceMenu();
+  menu.hidden = false;
+  // 贴着 chip 弹在下方，右侧空间不够时向左收。
+  const r = $("deviceChip").getBoundingClientRect();
+  const width = menu.offsetWidth || 340;
+  menu.style.top = Math.round(r.bottom + 6) + "px";
+  menu.style.left = Math.round(Math.min(r.left, window.innerWidth - width - 12)) + "px";
+};
+$("addCloudDevice").onclick = createCloudDevice;
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#deviceMenu") && !e.target.closest("#deviceChip")) {
+    $("deviceMenu").hidden = true;
+  }
+});
 
 $("settingsBtn").onclick = openSettings;
 $("modelChip").onclick = openSettings;
