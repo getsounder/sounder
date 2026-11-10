@@ -280,6 +280,10 @@
     display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px; line-height: 1.65; color: #c9c9d6; background: none; border: 0; padding: 0;
   }
+  .code .tok-kw { color: #8fb6ff; }
+  .code .tok-str { color: #a8d5a2; }
+  .code .tok-com { color: #5f6470; font-style: italic; }
+  .code .tok-num { color: #e0b080; }
 
   .tool {
     align-self: stretch; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
@@ -1144,6 +1148,100 @@ function mdTableRow(line) {
   return line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
 }
 
+// ---------- 代码高亮（无依赖：注释 / 字符串 / 数字 / 关键字） ----------
+const HL_LANG = {
+  js: "js", jsx: "js", mjs: "js", cjs: "js", ts: "js", tsx: "js", javascript: "js", typescript: "js",
+  json: "json", go: "go", golang: "go", py: "py", python: "py", rs: "rs", rust: "rs",
+  java: "java", kt: "java", kotlin: "java", sh: "sh", bash: "sh", zsh: "sh", shell: "sh",
+  sql: "sql", yml: "yaml", yaml: "yaml", css: "css", scss: "css", html: "html", xml: "html",
+};
+
+const HL_KEYWORDS = {
+  js: "const let var function return if else for while switch case break continue class new this typeof instanceof import export from default async await try catch finally throw delete in of null undefined true false extends super yield static get set",
+  json: "true false null",
+  go: "func return if else for range switch case break continue var const type struct interface map chan go defer select package import nil true false make new len cap append error string int int64 float64 bool byte rune",
+  py: "def return if elif else for while break continue import from as class try except finally raise with lambda yield pass None True False and or not in is global nonlocal async await",
+  rs: "fn let mut return if else match for while loop break continue struct enum impl trait pub use mod crate self super where async await move ref as const static dyn unsafe true false None Some Ok Err",
+  java: "public private protected class interface enum extends implements static final void int long double float boolean char String new return if else for while switch case break continue try catch finally throw throws import package this super null true false abstract synchronized",
+  sh: "if then else elif fi for while do done case esac function return export local readonly set unset echo cd exit shift source alias",
+  sql: "SELECT FROM WHERE INSERT INTO VALUES UPDATE SET DELETE CREATE TABLE ALTER DROP INDEX JOIN LEFT RIGHT INNER OUTER ON GROUP BY ORDER LIMIT OFFSET HAVING AS AND OR NOT NULL TRUE FALSE",
+  yaml: "true false null",
+  css: "important media supports keyframes import font-face",
+  html: "",
+};
+
+const HL_LINE_COMMENT = { js: "//", go: "//", rs: "//", java: "//", json: "", py: "#", sh: "#", yaml: "#", sql: "--", css: "", html: "" };
+
+function highlightCode(code, lang) {
+  const key = HL_LANG[String(lang || "").toLowerCase()] || "";
+  if (!key || code.length > 20000) return esc(code);
+  const keywords = new Set((HL_KEYWORDS[key] || "").split(" ").filter(Boolean));
+  const lineComment = HL_LINE_COMMENT[key] || "";
+  const isCaseInsensitive = key === "sql";
+
+  let out = "";
+  let i = 0;
+  const n = code.length;
+  const wordRe = /[A-Za-z_$@]/;
+
+  while (i < n) {
+    const ch = code[i];
+    const next = code[i + 1];
+
+    // 块注释
+    if (ch === "/" && next === "*") {
+      const end = code.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      out += `<span class="tok-com">${esc(code.slice(i, stop))}</span>`;
+      i = stop;
+      continue;
+    }
+    // 行注释
+    if (lineComment && code.startsWith(lineComment, i)) {
+      let end = code.indexOf("\n", i);
+      if (end === -1) end = n;
+      out += `<span class="tok-com">${esc(code.slice(i, end))}</span>`;
+      i = end;
+      continue;
+    }
+    // 字符串
+    if (ch === '"' || ch === "'" || ch === "`") {
+      let j = i + 1;
+      while (j < n) {
+        if (code[j] === "\\") { j += 2; continue; }
+        if (code[j] === ch) { j++; break; }
+        if (code[j] === "\n" && ch !== "`") { break; }
+        j++;
+      }
+      out += `<span class="tok-str">${esc(code.slice(i, j))}</span>`;
+      i = j;
+      continue;
+    }
+    // 数字
+    if (/[0-9]/.test(ch)) {
+      let j = i;
+      while (j < n && /[0-9a-fA-FxX._]/.test(code[j])) j++;
+      out += `<span class="tok-num">${esc(code.slice(i, j))}</span>`;
+      i = j;
+      continue;
+    }
+    // 标识符 / 关键字
+    if (wordRe.test(ch)) {
+      let j = i;
+      while (j < n && /[A-Za-z0-9_$]/.test(code[j])) j++;
+      const word = code.slice(i, j);
+      const hit = keywords.has(isCaseInsensitive ? word.toUpperCase() : word);
+      out += hit ? `<span class="tok-kw">${esc(word)}</span>` : esc(word);
+      i = j;
+      continue;
+    }
+
+    out += esc(ch);
+    i++;
+  }
+  return out;
+}
+
 // 块级渲染：标题、列表（含缩进与勾选）、引用、表格、分隔线、段落（单换行保留为 <br>）。
 function mdBlock(seg) {
   const lines = seg.split("\n");
@@ -1186,6 +1284,11 @@ function mdBlock(seg) {
     if (line.includes("|") && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
       inlineBlock();
       const header = mdTableRow(line);
+      const aligns = mdTableRow(lines[i + 1]).map((c) => {
+        const left = c.startsWith(":");
+        const right = c.endsWith(":");
+        return left && right ? "center" : right ? "right" : left ? "left" : "";
+      });
       const rows = [];
       i += 2;
       while (i < lines.length && lines[i].includes("|") && lines[i].trim()) {
@@ -1195,9 +1298,9 @@ function mdBlock(seg) {
       i--;
       out.push(
         '<div class="md-table"><table><thead><tr>' +
-        header.map((c) => `<th>${mdInline(c)}</th>`).join("") +
+        header.map((c, idx) => `<th${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ""}>${mdInline(c)}</th>`).join("") +
         "</tr></thead><tbody>" +
-        rows.map((r) => "<tr>" + r.map((c) => `<td>${mdInline(c)}</td>`).join("") + "</tr>").join("") +
+        rows.map((r) => "<tr>" + r.map((c, idx) => `<td${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ""}>${mdInline(c)}</td>`).join("") + "</tr>").join("") +
         "</tbody></table></div>"
       );
       continue;
@@ -1261,7 +1364,7 @@ function mdToHtml(src) {
       const closed = parts.length > i + 1;
       out += `<div class="code${closed ? "" : " streaming"}"><div class="code-head"><span>${esc(lang || "code")}</span>` +
         `<button class="copy" type="button">复制</button></div>` +
-        `<pre><code>${esc(code.replace(/\n+$/, ""))}</code></pre></div>`;
+        `<pre><code>${highlightCode(code.replace(/\n+$/, ""), lang)}</code></pre></div>`;
     }
   }
   return out;
