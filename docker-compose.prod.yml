@@ -96,7 +96,6 @@ services:
     user: "65534:65534"
     command:
       - "-addr=0.0.0.0:9090"
-      - "-token=${SOUNDER_TOKEN:?set SOUNDER_TOKEN}"
       - "-stale=90s"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9090/healthz"]
@@ -119,7 +118,6 @@ services:
       - "-addr=0.0.0.0:8000"
       - "-gateway=http://sounder-gateway:9090"
       - "-gateway-token=${SOUNDER_TOKEN:?set SOUNDER_TOKEN}"
-      - "-token=${SOUNDER_TOKEN:?set SOUNDER_TOKEN}"
       - "-store=postgres"
       - "-dsn=postgres://sounder:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@sounder-postgres:5432/sounder?sslmode=disable"
       - "-auth=${SOUNDER_AUTH:-true}"

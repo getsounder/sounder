@@ -114,7 +114,7 @@ curl -H "Authorization: Bearer dev-token" localhost:8000/v1/workers
 ```
 
 The auth e2e script covers local registration/login, Cookie + Bearer sessions,
-session ownership isolation, legacy-token admin visibility, session revocation,
+session ownership isolation, admin (is_admin) visibility, session revocation,
 password change/reset, identity unbinding, CORS, OAuth-disabled behavior,
 body limits and registration rate limiting. It creates throwaway accounts in
 the local database (random emails) and deletes the session it creates.

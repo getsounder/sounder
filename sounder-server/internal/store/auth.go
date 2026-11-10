@@ -94,22 +94,3 @@ type AuthStore interface {
 	Audit(e AuditEvent) error
 }
 
-// EnsureLegacyUser 保证 -token 兼容模式有一个可用的 owner 记录。
-func EnsureLegacyUser(st AuthStore, id string) error {
-	_, err := st.GetUser(id)
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, ErrNotFound) {
-		return err
-	}
-	now := time.Now()
-	return st.CreateUser(User{
-		ID:          id,
-		DisplayName: "legacy",
-		IsAdmin:     true,
-		Status:      "active",
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	})
-}

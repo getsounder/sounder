@@ -41,7 +41,6 @@ spec:
             - "-addr=0.0.0.0:8000"
             - "-gateway=$(GATEWAY_URL)"
             - "-gateway-token=$(SOUNDER_TOKEN)"
-            - "-token=$(SOUNDER_TOKEN)"
             - "-store=postgres"
             - "-dsn=postgres://sounder:$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)?sslmode=disable"
             - "-auth=$(SOUNDER_AUTH)"

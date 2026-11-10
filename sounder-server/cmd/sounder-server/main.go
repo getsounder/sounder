@@ -56,7 +56,6 @@ func main() {
 	k8sServiceAccount := flag.String("k8s-service-account", env("SOUNDER_K8S_SERVICE_ACCOUNT", "default"), "Worker Pod 的 ServiceAccount")
 	provisionerGateway := flag.String("provisioner-gateway", env("SOUNDER_PROVISIONER_GATEWAY", ""), "provisioner 创建的 Worker 该连的网关地址；留空则由 public-gateway 推导（localhost→host.docker.internal）")
 	provisionerCP := flag.String("provisioner-control-plane", env("SOUNDER_PROVISIONER_CONTROL_PLANE", ""), "Worker 换短期令牌用的控制面地址；留空由 public-url 推导（localhost→host.docker.internal）")
-	token := flag.String("token", env("SOUNDER_TOKEN", ""), "控制端访问本服务的 token；为空则不校验")
 	storeKind := flag.String("store", "memory", "memory | postgres")
 	dsn := flag.String("dsn", "", "PostgreSQL DSN（-store=postgres 时必填）")
 
@@ -100,10 +99,6 @@ func main() {
 		ast = pg
 	default:
 		log.Fatalf("unsupported store: %s", *storeKind)
-	}
-
-	if err := store.EnsureLegacyUser(ast, api.LegacyUserID); err != nil {
-		log.Printf("ensure legacy user: %v", err)
 	}
 
 	var authSvc *auth.Service
@@ -170,7 +165,7 @@ func main() {
 		prov = k8sProv
 		log.Printf("provisioner: k8s (ns=%s, image=%s, gateway=%s)", *k8sNamespace, *workerImage, tunnelURL)
 	}
-	srv := api.New(st, ast, authSvc, gw, *token, *publicGateway, *workerSecret, prov, controlPlane)
+	srv := api.New(st, ast, authSvc, gw, *publicGateway, *workerSecret, prov, controlPlane)
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
