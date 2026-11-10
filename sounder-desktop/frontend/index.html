@@ -328,6 +328,8 @@
     color: var(--muted2); display: flex; gap: 8px; align-items: baseline;
   }
   .tool b { color: var(--muted); font-weight: 500; }
+  .tool.running::before { content: "◌"; color: var(--accent2); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .event { align-self: stretch; font-size: 11px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .error {
     align-self: stretch; padding: 10px 12px; border-radius: 8px;
@@ -739,6 +741,9 @@ const state = {
   device: params.get("device") || "",
   quota: null,
   approvals: new Set(),
+  turnStart: 0,
+  toolRow: null,
+  toolStart: 0,
   admin: false,
   gatewayUrl: "",
   capacity: 0,
@@ -1909,6 +1914,13 @@ async function cancelTurn() {
 }
 
 // 顶栏工作区 + 输入框下方的模型 chip，跟着当前会话/设置走。
+function formatDuration(sec) {
+  const n = Number(sec) || 0;
+  if (!n) return "—";
+  if (n < 60) return n.toFixed(1) + "s";
+  return Math.floor(n / 60) + "m" + Math.round(n % 60) + "s";
+}
+
 function renderInfoPanel() {
   const s = state.current;
   const dev = currentDevice();
@@ -1919,6 +1931,7 @@ function renderInfoPanel() {
     ["工作区", (s && s.workspace) || (localWorkerMode ? "由 Worker 管理" : "—")],
     ["状态", s ? (STATE_LABELS[s.state] || s.state || "—") : "—"],
     ["待处理", state.approvals.size ? state.approvals.size + " 项" : "无"],
+    ["本轮耗时", s && s.lastDuration ? formatDuration(s.lastDuration) : "—"],
     ["创建", s && s.createdAt ? new Date(s.createdAt).toLocaleString("zh-CN") : "—"],
   ];
   $("infoRows").innerHTML = rows
@@ -2185,6 +2198,7 @@ function renderEvent(evt) {
 
   if (type === "message.start") {
     setRunning(true);
+    if (!state.turnStart) state.turnStart = Date.now();
     state.bubble = addEl("msg assistant", '<div class="meta">Agent</div><div class="body md">生成中…</div>');
     state.bubbleRaw = "";
     return;
@@ -2217,17 +2231,39 @@ function renderEvent(evt) {
     return;
   }
   if (type === "tool.start") {
-    addEl("tool", `<b>${esc(p.tool || p.name || "tool")}</b> 开始执行`);
+    const el = addEl("tool running", `<b>${esc(p.tool || p.name || "tool")}</b> 执行中…`);
+    state.toolRow = el;
+    state.toolStart = Date.now();
     return;
   }
   if (type === "tool.end") {
-    addEl("tool", `<b>${esc(p.tool || p.name || "tool")}</b> 结束${p.exitCode !== undefined ? " · exit " + p.exitCode : ""}`);
+    const name = esc(p.tool || p.name || "tool");
+    const secs = state.toolStart ? ((Date.now() - state.toolStart) / 1000).toFixed(1) + "s" : "";
+    const line = `<b>${name}</b> · ${p.isError ? "失败" : "完成"}` +
+      (p.exitCode !== undefined ? " · exit " + esc(String(p.exitCode)) : "") +
+      (secs ? " · " + secs : "");
+    if (state.toolRow && state.toolRow.isConnected) {
+      state.toolRow.className = "tool";
+      state.toolRow.innerHTML = line;
+    } else {
+      addEl("tool", line);
+    }
+    state.toolRow = null;
+    state.toolStart = 0;
     return;
   }
   if (type === "session.settled") {
-    addEl("event", "本轮结束");
-    if (state.current) { state.current.state = "idle"; renderSessions(); }
+    const took = state.turnStart ? (Date.now() - state.turnStart) / 1000 : 0;
+    const label = took ? `本轮耗时 ${took < 60 ? took.toFixed(1) + "s" : Math.round(took / 60) + "m" + Math.round(took % 60) + "s"}` : "本轮结束";
+    addEl("event", label);
+    if (state.current) {
+      state.current.state = "idle";
+      if (took) state.current.lastDuration = took;
+      renderSessions();
+    }
+    state.turnStart = 0;
     setRunning(false);
+    if (!$("infoPanel").hidden) renderInfoPanel();
     return;
   }
   if (type === "approval.requested") {
@@ -2400,6 +2436,7 @@ async function sendPrompt(e) {
   $("prompt").value = "";
   $("prompt").style.height = "52px";
   setRunning(true);
+  state.turnStart = Date.now();
   rememberTitle(state.current.id, text);
   addUserMessage(text);
   try {
