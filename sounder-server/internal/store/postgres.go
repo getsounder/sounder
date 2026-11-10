@@ -258,3 +258,23 @@ func (p *Postgres) DeleteByOwner(ownerID string) error {
 	_, err := p.db.Exec(`DELETE FROM sessions WHERE owner_id = $1`, ownerID)
 	return err
 }
+
+func (p *Postgres) ListByState(state string) []Session {
+	rows, err := p.db.Query(
+		`SELECT id, owner_id, worker_id, model, state, created_at, updated_at FROM sessions WHERE state = $1 ORDER BY created_at`, state)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		var s Session
+		var owner sql.NullString
+		if err := rows.Scan(&s.ID, &owner, &s.WorkerID, &s.Model, &s.State, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return out
+		}
+		s.OwnerID = owner.String
+		out = append(out, s)
+	}
+	return out
+}

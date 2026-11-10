@@ -94,6 +94,7 @@
   .device-menu .dm-foot button { flex: 1; font-size: 12px; padding: 6px; }
   .status {
     margin-left: auto; display: flex; align-items: center; gap: 6px;
+    background: transparent; border: 1px solid transparent; border-radius: 999px; padding: 3px 8px;
     font-size: 11.5px; color: var(--muted2); transition: color .2s;
   }
   .status i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted2); transition: background .2s; }
@@ -591,7 +592,7 @@
     <button id="approvalBadge" class="badge-pill" hidden title="待处理的审批/提问">0</button>
     <button id="findBtn" class="icon-btn" title="在会话内搜索（⌘F）" aria-label="搜索">⌕</button>
     <button id="settingsBtn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
-    <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
+    <button class="status" id="connBtn" type="button" title="点击重连"><i id="conn"></i><span id="connText">未连接</span></button>
   </header>
   <div id="setup" hidden>
     <input id="api" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="服务器地址，如 https://sounder.example.com（仅首次连接需要）">
@@ -711,6 +712,13 @@
       <input id="setWorkspace" placeholder="/Users/me/code/project" autocapitalize="off" autocorrect="off">
     </div>
     <div class="field">
+      <label>离线设备</label>
+      <div class="hint" style="display:flex;align-items:center;gap:8px">
+        <span id="staleInfo">—</span>
+        <button id="pruneBtn" class="mini" type="button">清理</button>
+      </div>
+    </div>
+    <div class="field">
       <label>并发上限</label>
       <div class="hint" id="setCapacity">—</div>
     </div>
@@ -826,6 +834,7 @@ const state = {
   device: params.get("device") || "",
   quota: null,
   approvals: new Set(),
+  approvalCards: new Map(),
   pendingTotal: 0,
   queueItems: [],
   turnStart: 0,
@@ -844,6 +853,7 @@ const state = {
   running: false,
   me: null,
   providers: [],
+  mailEnabled: true,
   authTab: "login",
   persistToken: isNativeShell,
 };
@@ -936,6 +946,7 @@ $("authTabs").onclick = (e) => {
 async function loadProviders() {
   const data = await api("/v1/auth/providers");
   state.providers = data.providers || [];
+  state.mailEnabled = Boolean(data.mail);
   const box = $("providers");
   box.innerHTML = "";
   for (const p of state.providers) {
@@ -989,6 +1000,10 @@ $("authSubmit").onclick = submitAuth;
 $("password").addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
 
 $("forgotBtn").onclick = async () => {
+  if (state.mailEnabled === false) {
+    setAuthMsg("邮件服务未配置，暂时无法自助找回密码，请联系管理员。", "err");
+    return;
+  }
   const email = $("email").value.trim() || prompt("请输入注册邮箱");
   if (!email) return;
   try {
@@ -2284,6 +2299,26 @@ async function openStream(sessionId) {
   if (state.abort) state.abort.abort();
   const ctrl = new AbortController();
   state.abort = ctrl;
+
+  let attempt = 0;
+  while (!ctrl.signal.aborted) {
+    try {
+      const ok = await streamOnce(sessionId, ctrl);
+      if (ok) attempt = 0;
+    } catch (e) {
+      if (e.name === "AbortError") return;
+    }
+    if (ctrl.signal.aborted) return;
+    if (!state.current || state.current.id !== sessionId) return;
+
+    attempt++;
+    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 15000);
+    setConn(false, `重连中 ${Math.max(1, Math.round(delay / 1000))}s`);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+}
+
+async function streamOnce(sessionId, ctrl) {
   setConn(false, "连接中");
 
   const res = await fetch(`${state.apiBase}/v1/sessions/${sessionId}/events?after=${state.lastSeq}`, {
@@ -2311,6 +2346,7 @@ async function openStream(sessionId) {
     }
   }
   setConn(false, "已断开");
+  return true;
 }
 
 function handleChunk(chunk) {
@@ -2494,6 +2530,21 @@ function updateApprovalBadge() {
   badge.title = n ? `${n} 个待处理的审批/提问` : "待处理的审批/提问";
 }
 
+function expireApprovalCard(id) {
+  const box = state.approvalCards.get(id);
+  state.approvalCards.delete(id);
+  if (box && box.isConnected && !box.dataset.done) {
+    box.dataset.done = "1";
+    box.style.opacity = ".55";
+    box.querySelectorAll("button, input").forEach((el) => (el.disabled = true));
+    const note = document.createElement("div");
+    note.className = "event";
+    note.textContent = "已超时或已在别处处理";
+    box.appendChild(note);
+  }
+  state.approvals.delete(id);
+}
+
 function resolveApproval(id) {
   state.approvals.delete(id);
   if (state.pendingTotal) state.pendingTotal = Math.max(0, state.pendingTotal - 1);
@@ -2524,6 +2575,10 @@ async function pollPending() {
     if (count !== state.pendingTotal) {
       state.pendingTotal = count;
       updateApprovalBadge();
+    }
+    const alive = new Set((data.approvals || []).map((a) => a.id));
+    for (const id of [...state.approvals]) {
+      if (!alive.has(id)) expireApprovalCard(id);
     }
     if (!$("queueModal").hidden) renderQueue();
   } catch (_) {
@@ -2664,6 +2719,7 @@ function renderApproval(p) {
   }
 
   const box = document.createElement("div");
+  if (approvalId) state.approvalCards.set(approvalId, box);
   if (isQuestion) {
     box.className = "ask";
     const raw = Array.isArray(p.args?.questions) ? p.args.questions : [];
@@ -2755,12 +2811,15 @@ function renderApproval(p) {
         box.querySelectorAll("button").forEach((b) => (b.disabled = true));
         try {
           await answerApproval(approvalId, allow, reason);
+          box.dataset.done = "1";
           box.style.opacity = ".6";
+          state.approvalCards.delete(approvalId);
           const note = document.createElement("div");
           note.className = "event";
           note.textContent = allow ? "已允许" : "已拒绝" + (reason ? "：" + reason : "");
           box.appendChild(note);
         } catch (e) {
+          if (e.status === 404) { expireApprovalCard(approvalId); return; }
           showError(e);
           box.querySelectorAll("button").forEach((b) => (b.disabled = false));
         } finally {
@@ -2822,6 +2881,12 @@ function openSettings() {
   const cfg = loadSettings();
   $("setModel").value = cfg.model || "";
   $("setWorkspace").value = cfg.workspace || "";
+  const offline = state.devices.filter((d) => d.status !== "online").length;
+  $("staleInfo").textContent = state.devices.length
+    ? `共 ${state.devices.length} 台，离线 ${offline} 台`
+    : "连接后显示";
+  $("pruneBtn").disabled = offline === 0;
+
   $("setCapacity").textContent = state.capacity
     ? `当前 ${state.used || 0} / ${state.capacity}（由 Worker 启动参数决定）`
     : "连接后显示";
@@ -3089,8 +3154,28 @@ document.addEventListener("click", (e) => {
   }
 });
 
+$("pruneBtn").onclick = async () => {
+  if (!confirm("清理所有离线且没有会话的设备？")) return;
+  const btn = $("pruneBtn");
+  btn.disabled = true;
+  try {
+    const r = await api("/v1/devices/prune", { method: "POST" });
+    await loadDevices();
+    toast(`已清理 ${r.removed || 0} 台离线设备`);
+  } catch (e) {
+    toast(e.message || "清理失败");
+  } finally {
+    btn.disabled = false;
+  }
+};
+
 $("settingsBtn").onclick = openSettings;
 $("approvalBadge").onclick = openQueue;
+$("connBtn").onclick = () => {
+  if (!state.current) return;
+  toast("正在重连…");
+  openStream(state.current.id);
+};
 $("infoBtn").onclick = () => {
   const panel = $("infoPanel");
   panel.hidden = !panel.hidden;

@@ -71,6 +71,12 @@ func New(cfg Config, st store.AuthStore, mail Mailer) *Service {
 	return s
 }
 
+// MailConfigured 报告是否配置了真实 SMTP（否则邮件只写日志）。
+func (s *Service) MailConfigured() bool {
+	_, isLog := s.mail.(logMailer)
+	return s.mail != nil && !isLog
+}
+
 func (s *Service) Config() Config { return s.cfg }
 
 // ProviderNames 返回已启用的第三方登录方式。
