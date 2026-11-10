@@ -34,6 +34,7 @@ type Kubernetes struct {
 	ServiceAccount string
 	CPU            string // 默认 "2"
 	Mem            string // 默认 "4Gi"
+	bearerToken    string // 集群外调试：来自 kubeconfig
 	client         *http.Client
 }
 
@@ -55,24 +56,31 @@ func NewKubernetes(namespace, image, gateway, controlPlane, workerKind, model, s
 	host := os.Getenv("KUBERNETES_SERVICE_HOST")
 	port := os.Getenv("KUBERNETES_SERVICE_PORT")
 	api := "https://kubernetes.default.svc"
-	if host != "" {
-		if port == "" {
-			port = "443"
-		}
-		api = "https://" + host + ":" + port
-	}
-
+	bearer := ""
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
-	if ca, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"); err == nil {
-		pool := x509.NewCertPool()
-		if pool.AppendCertsFromPEM(ca) {
-			transport.TLSClientConfig.RootCAs = pool
+
+	saTokenPath := "/var/run/secrets/kubernetes.io/serviceaccount/token"
+	if _, statErr := os.Stat(saTokenPath); statErr == nil {
+		// 集群内：ServiceAccount
+		if host != "" {
+			if port == "" {
+				port = "443"
+			}
+			api = "https://" + host + ":" + port
 		}
-	} else {
-		// 集群外调试：允许跳过校验（仅当显式设置 K8S_INSECURE=1）。
-		if envOr("K8S_INSECURE", "") == "1" {
-			transport.TLSClientConfig.InsecureSkipVerify = true
+		if ca, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"); err == nil {
+			pool := x509.NewCertPool()
+			if pool.AppendCertsFromPEM(ca) {
+				transport.TLSClientConfig.RootCAs = pool
+			}
 		}
+	} else if kc, err := loadKubeconfig(); err == nil {
+		// 集群外调试：读 KUBECONFIG
+		api = kc.server
+		transport.TLSClientConfig = kc.tlsConf
+		bearer = kc.token
+	} else if envOr("K8S_INSECURE", "") == "1" {
+		transport.TLSClientConfig.InsecureSkipVerify = true
 	}
 
 	return &Kubernetes{
@@ -88,6 +96,7 @@ func NewKubernetes(namespace, image, gateway, controlPlane, workerKind, model, s
 		ServiceAccount: serviceAccount,
 		CPU:            envOr("K8S_WORKER_CPU", "2"),
 		Mem:            envOr("K8S_WORKER_MEM", "4Gi"),
+		bearerToken:    bearer,
 		client:         &http.Client{Transport: transport, Timeout: 60 * time.Second},
 	}, nil
 }
@@ -294,6 +303,9 @@ func (k *Kubernetes) do(ctx context.Context, method, path string, body []byte, o
 func (k *Kubernetes) token() string {
 	if t := os.Getenv("KUBERNETES_SA_TOKEN"); t != "" {
 		return t
+	}
+	if k.bearerToken != "" {
+		return k.bearerToken
 	}
 	b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
 	if err != nil {
