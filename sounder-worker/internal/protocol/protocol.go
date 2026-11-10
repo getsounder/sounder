@@ -42,9 +42,12 @@ type CreateSessionResponse struct {
 
 // SessionView 是列表接口的展示模型：控制端不用再逐个拉历史就能渲染侧栏。
 type SessionView struct {
-	ID        string `json:"id"`
-	Model     string `json:"model,omitempty"`
-	State     string `json:"state"`
+	ID    string `json:"id"`
+	Model string `json:"model,omitempty"`
+	State string `json:"state"`
+	// Pending 表示正在等待用户的交互：approval（工具审批）| question（提问）
+	Pending   string `json:"pending,omitempty"`
+	PendingN  int    `json:"pendingCount,omitempty"`
 	Title     string `json:"title,omitempty"`
 	Workspace string `json:"workspace,omitempty"`
 	CreatedAt string `json:"createdAt,omitempty"`
@@ -55,9 +58,9 @@ type PromptRequest struct {
 }
 
 type ApprovalRequest struct {
-	ID      string `json:"id"`
-	Allow   bool   `json:"allow"`
-	Reason  string `json:"reason,omitempty"`
+	ID      string         `json:"id"`
+	Allow   bool           `json:"allow"`
+	Reason  string         `json:"reason,omitempty"`
 	Patched map[string]any `json:"patched,omitempty"`
 }
 

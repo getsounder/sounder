@@ -13,10 +13,10 @@ import (
 type Level int
 
 const (
-	L0Read Level = iota // read / grep / find / ls
-	L1Write             // write / edit
-	L2Exec              // bash
-	L3Network           // curl / git push / npm install / 外部 MCP
+	L0Read    Level = iota // read / grep / find / ls
+	L1Write                // write / edit
+	L2Exec                 // bash
+	L3Network              // curl / git push / npm install / 外部 MCP
 )
 
 func (l Level) String() string {

@@ -169,9 +169,13 @@
   .s-title { font-size: 12.5px; font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .s-sub { font-size: 10.5px; color: var(--muted2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #sessions li .dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; flex: none; }
-  #sessions li .dot.running { background: var(--warn); }
-  #sessions li .dot.idle { background: #3ecf8e80; }
-  #sessions li .dot.failed, #sessions li .dot.closed { background: var(--err); }
+  #sessions li .dot.st-running { background: var(--accent); animation: dotPulse 1.1s ease-in-out infinite; }
+  #sessions li .dot.st-approval { background: var(--warn); }
+  #sessions li .dot.st-question { background: #a78bfa; }
+  #sessions li .dot.st-idle { background: #3ecf8e80; }
+  #sessions li .dot.st-failed { background: var(--err); }
+  #sessions li .dot.st-closed { background: var(--muted2); }
+  @keyframes dotPulse { 50% { opacity: .35; } }
   .s-acts { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity .1s; }
   #sessions li:hover .s-acts, #sessions li.active .s-acts { opacity: 1; }
   .s-act {
@@ -1561,7 +1565,14 @@ async function loadSessions() {
   }
 }
 
-const STATE_LABELS = { running: "运行中", idle: "空闲", failed: "失败" };
+const STATE_LABELS = {
+  running: "执行中",
+  approval: "待审批",
+  question: "待回答",
+  idle: "空闲",
+  closed: "已关闭",
+  failed: "失败",
+};
 
 // 会话标题来自第一条用户消息，存在本地；Worker 目前只返回会话 ID。
 const TITLES_KEY = "sounder.titles";
@@ -1656,7 +1667,7 @@ function renderSessions() {
     li.className = state.current && state.current.id === s.id ? "active" : "";
     const title = sessionTitle(s);
     const sub = [relTime(s.createdAt), STATE_LABELS[s.state]].filter(Boolean).join(" · ");
-    li.innerHTML = `<span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${esc(sub || s.model || "本地会话")}</span></span><i class="dot ${esc(s.state || "")}"></i>`;
+    li.innerHTML = `<span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${esc(sub || s.model || "本地会话")}</span></span><i class="dot st-${esc(s.state || "")}"></i>`;
     li.title = [s.id, s.model, s.workspace].filter(Boolean).join("\n");
     li.onclick = () => { setMenu(false); selectSession(s); };
 
@@ -2127,6 +2138,11 @@ function renderEvent(evt) {
     return;
   }
   if (type === "approval.requested") {
+    // 立即把当前会话标记为待审批/待回答，侧栏状态实时更新
+    if (state.current) {
+      state.current.state = p.tool === "ask_user" || p.level === "question" ? "question" : "approval";
+      renderSessions();
+    }
     renderApproval(p);
     return;
   }
@@ -2151,6 +2167,11 @@ function updateApprovalBadge() {
 function resolveApproval(id) {
   state.approvals.delete(id);
   updateApprovalBadge();
+  // 没有待处理项了就回到执行中
+  if (state.current && state.approvals.size === 0) {
+    state.current.state = state.running ? "running" : "idle";
+    renderSessions();
+  }
 }
 
 async function answerApproval(approvalId, allow, reason) {

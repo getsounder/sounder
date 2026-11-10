@@ -302,10 +302,27 @@ func (a *Actor) View() protocol.SessionView {
 	case a.running:
 		state = "running"
 	}
+	pending := ""
+	pendingN := 0
+	if lister, ok := a.approver.(interface {
+		PendingFor(sessionID string) (int, int)
+	}); ok {
+		total, questions := lister.PendingFor(a.ID)
+		if total > 0 {
+			pendingN = total
+			pending = "approval"
+			if questions > 0 {
+				pending = "question"
+			}
+			state = pending
+		}
+	}
 	return protocol.SessionView{
 		ID:        a.ID,
 		Model:     a.ModelID,
 		State:     state,
+		Pending:   pending,
+		PendingN:  pendingN,
 		Title:     a.title,
 		Workspace: a.CWD,
 		CreatedAt: a.createdAt.Format(time.RFC3339),

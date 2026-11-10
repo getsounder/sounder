@@ -276,6 +276,14 @@ func (s *Server) pickWorker(ctx context.Context) (string, error) {
 	return "", errors.New("no worker available")
 }
 
+// sessionView 在会话元数据上叠加 Worker 侧的实时状态（执行中/待审批/待回答）与标题。
+type sessionView struct {
+	store.Session
+	Title    string `json:"title,omitempty"`
+	Pending  string `json:"pending,omitempty"`
+	PendingN int    `json:"pendingCount,omitempty"`
+}
+
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	ctx := authFrom(r)
 	list := s.store.ListByOwner(ctx.UserID)
@@ -292,7 +300,59 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		}
 		list = filtered
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sessions": list})
+
+	// 向各 Worker 拉一次实时状态，合并进列表（失败就退回库里的状态）。
+	type liveState struct {
+		State    string
+		Title    string
+		Pending  string
+		PendingN int
+	}
+	live := map[string]liveState{}
+	seen := map[string]bool{}
+	for _, sess := range list {
+		if s.gw == nil {
+			break
+		}
+		if seen[sess.WorkerID] {
+			continue
+		}
+		seen[sess.WorkerID] = true
+		status, body, err := s.gw.RPC(r.Context(), sess.WorkerID, http.MethodGet, "/v1/sessions", nil)
+		if err != nil || status != http.StatusOK {
+			continue
+		}
+		var out struct {
+			Sessions []struct {
+				ID       string `json:"id"`
+				State    string `json:"state"`
+				Title    string `json:"title"`
+				Pending  string `json:"pending"`
+				PendingN int    `json:"pendingCount"`
+			} `json:"sessions"`
+		}
+		if json.Unmarshal(body, &out) != nil {
+			continue
+		}
+		for _, item := range out.Sessions {
+			live[item.ID] = liveState{State: item.State, Title: item.Title, Pending: item.Pending, PendingN: item.PendingN}
+		}
+	}
+
+	views := make([]sessionView, 0, len(list))
+	for _, sess := range list {
+		v := sessionView{Session: sess}
+		if st, ok := live[sess.ID]; ok {
+			if st.State != "" {
+				v.State = st.State
+			}
+			v.Title = st.Title
+			v.Pending = st.Pending
+			v.PendingN = st.PendingN
+		}
+		views = append(views, v)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": views})
 }
 
 // ownedSession 读取当前登录用户拥有的会话；管理员（-token 兼容模式）可见全部。
