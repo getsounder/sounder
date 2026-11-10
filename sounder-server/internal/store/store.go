@@ -30,15 +30,65 @@ type Store interface {
 	ListByOwner(ownerID string) []Session
 	UpdateState(id, state string) error
 	Delete(id string) error
+
+	// 设备 = 一个 Worker 运行环境（桌面 container / 桌面 process / 云端容器）。
+	EnsureDevice(d Device) (Device, error)
+	ListDevices(userID string) ([]Device, error)
+	RenameDevice(id, userID, name string) error
+	DeleteDevice(id, userID string) error
+
+	// 配额：云端设备数量与单设备规格。桌面本地设备不受 max_devices 限制。
+	GetQuota(userID string) (Quota, error)
+	SetQuota(q Quota) error
+}
+
+// Quota 是单个用户的资源配额。
+type Quota struct {
+	UserID       string `json:"userId,omitempty"`
+	MaxDevices   int    `json:"maxDevices"`   // 云端设备上限
+	DeviceCPU    int    `json:"deviceCpu"`    // 单设备 vCPU
+	DeviceMemMB  int    `json:"deviceMemMb"`  // 单设备内存
+	DeviceDiskGB int    `json:"deviceDiskGb"` // 单设备磁盘
+}
+
+// DefaultQuota 是新用户的默认配额：默认只允许一个云端设备。
+func DefaultQuota(userID string) Quota {
+	return Quota{
+		UserID:       userID,
+		MaxDevices:   1,
+		DeviceCPU:    2,
+		DeviceMemMB:  4096,
+		DeviceDiskGB: 20,
+	}
+}
+
+// Device 是用户与 Worker 运行环境的绑定关系。
+// 在线状态不在库里，读取时用网关的 worker 列表实时合并。
+type Device struct {
+	ID         string    `json:"id"`
+	UserID     string    `json:"userId"`
+	WorkerID   string    `json:"workerId"`
+	Name       string    `json:"name"`
+	Kind       string    `json:"kind"` // desktop-container | desktop-process | cloud
+	Platform   string    `json:"platform"`
+	Version    string    `json:"version"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 type Memory struct {
-	mu   sync.RWMutex
-	data map[string]Session
+	mu      sync.RWMutex
+	data    map[string]Session
+	devices map[string]Device
+	quotas  map[string]Quota
 }
 
 func NewMemory() *Memory {
-	return &Memory{data: make(map[string]Session)}
+	return &Memory{
+		data:    make(map[string]Session),
+		devices: make(map[string]Device),
+		quotas:  make(map[string]Quota),
+	}
 }
 
 func (m *Memory) Create(s Session) error {
