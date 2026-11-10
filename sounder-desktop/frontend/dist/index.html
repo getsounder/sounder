@@ -169,9 +169,13 @@
   .s-title { font-size: 12.5px; font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .s-sub { font-size: 10.5px; color: var(--muted2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #sessions li .dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; flex: none; }
-  #sessions li .dot.running { background: var(--warn); }
-  #sessions li .dot.idle { background: #3ecf8e80; }
-  #sessions li .dot.failed, #sessions li .dot.closed { background: var(--err); }
+  #sessions li .dot.st-running { background: var(--accent); animation: dotPulse 1.1s ease-in-out infinite; }
+  #sessions li .dot.st-approval { background: var(--warn); }
+  #sessions li .dot.st-question { background: #a78bfa; }
+  #sessions li .dot.st-idle { background: #3ecf8e80; }
+  #sessions li .dot.st-failed { background: var(--err); }
+  #sessions li .dot.st-closed { background: var(--muted2); }
+  @keyframes dotPulse { 50% { opacity: .35; } }
   .s-acts { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity .1s; }
   #sessions li:hover .s-acts, #sessions li.active .s-acts { opacity: 1; }
   .s-act {
@@ -461,7 +465,7 @@
   .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-COKWI3sP.js"></script>
+  <script type="module" crossorigin src="/assets/index-DEAIfsxo.js"></script>
 </head>
 <body>
 <div class="app">

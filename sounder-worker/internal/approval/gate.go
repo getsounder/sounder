@@ -125,6 +125,22 @@ func (g *Gate) List() []Request {
 	return out
 }
 
+// PendingFor 返回某会话当前的待处理数量，以及其中"提问"的数量。
+func (g *Gate) PendingFor(sessionID string) (total int, questions int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for _, p := range g.pending {
+		if p.req.SessionID != sessionID {
+			continue
+		}
+		total++
+		if p.req.Level == "question" || p.req.Tool == "ask_user" {
+			questions++
+		}
+	}
+	return total, questions
+}
+
 // Cleanup 清掉过期的已决记录，避免长期运行内存增长。
 func (g *Gate) Cleanup(before time.Time) {
 	g.mu.Lock()
