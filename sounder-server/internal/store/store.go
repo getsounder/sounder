@@ -34,6 +34,7 @@ type Store interface {
 	// 设备 = 一个 Worker 运行环境（桌面 container / 桌面 process / 云端容器）。
 	EnsureDevice(d Device) (Device, error)
 	ListDevices(userID string) ([]Device, error)
+	ListAllDevices() ([]Device, error)
 	RenameDevice(id, userID, name string) error
 	DeleteDevice(id, userID string) error
 

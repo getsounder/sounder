@@ -55,6 +55,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/worker-tokens/refresh", s.handleRefreshWorkerToken)
 	mux.HandleFunc("POST /v1/devices/{id}/start", s.handleStartDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/stop", s.handleStopDevice)
+	mux.HandleFunc("GET /v1/admin/stats", s.handleAdminStats)
+	mux.HandleFunc("GET /v1/admin/users", s.handleAdminUsers)
+	mux.HandleFunc("GET /v1/admin/devices", s.handleAdminDevices)
+	mux.HandleFunc("GET /v1/admin/sessions", s.handleAdminSessions)
+
 	mux.HandleFunc("GET /v1/quota", s.handleGetQuota)
 	mux.HandleFunc("PUT /v1/quota", s.handleSetQuota)
 

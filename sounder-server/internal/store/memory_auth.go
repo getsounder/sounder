@@ -1,6 +1,7 @@
 package store
 
 import (
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -120,6 +121,27 @@ func (m *MemoryAuth) GetIdentity(provider, subject string) (Identity, error) {
 		return Identity{}, ErrNotFound
 	}
 	return i, nil
+}
+
+func (m *MemoryAuth) ListUsers(limit, offset int) ([]User, int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	all := make([]User, 0, len(m.users))
+	for _, u := range m.users {
+		all = append(all, u)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].CreatedAt.After(all[j].CreatedAt) })
+	total := len(all)
+	if offset > 0 {
+		if offset >= len(all) {
+			return nil, total, nil
+		}
+		all = all[offset:]
+	}
+	if limit > 0 && limit < len(all) {
+		all = all[:limit]
+	}
+	return all, total, nil
 }
 
 func (m *MemoryAuth) ListIdentities(userID string) ([]Identity, error) {
