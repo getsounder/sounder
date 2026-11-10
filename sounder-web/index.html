@@ -333,6 +333,12 @@
   .ask .q-text { font-size: 13px; margin-bottom: 10px; }
   .ask .q-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   .ask .q-opts button { font-size: 12px; padding: 5px 10px; border-radius: 7px; }
+  .ask .q-hint { font-size: 11px; color: var(--muted2); margin-bottom: 8px; }
+  .ask .q-item { margin-bottom: 10px; }
+  .ask .q-item input { width: 100%; font-size: 12.5px; }
+  .ask .q-opts button.on { background: #24406e; border-color: #3d63a8; color: #fff; }
+  .ask .q-actions { display: flex; justify-content: flex-end; }
+  .ask input.missing { border-color: var(--err); }
   .ask .q-reply { display: flex; gap: 8px; }
   .ask .q-reply input { flex: 1; font-size: 12.5px; }
   .ask.resolved { opacity: .55; }
@@ -2165,40 +2171,72 @@ function renderApproval(p) {
   const box = document.createElement("div");
   if (isQuestion) {
     box.className = "ask";
-    const options = Array.isArray(p.args?.options) ? p.args.options : [];
+    const raw = Array.isArray(p.args?.questions) ? p.args.questions : [];
+    const questions = raw.length
+      ? raw.map((q) => ({ question: q.question || "", options: Array.isArray(q.options) ? q.options : [] }))
+      : [{ question: p.reason || "", options: Array.isArray(p.args?.options) ? p.args.options : [] }];
+
+    const rows = questions.map((q, i) => {
+      const opts = q.options.length
+        ? `<div class="q-opts" data-opts="${i}">${q.options.map((o) => `<button type="button" data-i="${i}" data-opt="${esc(o)}">${esc(o)}</button>`).join("")}</div>`
+        : "";
+      return `<div class="q-item" data-q="${i}">
+        <div class="q-text">${questions.length > 1 ? `${i + 1}. ` : ""}${esc(q.question)}</div>
+        ${opts}
+        <input type="text" data-input="${i}" placeholder="输入回答…">
+      </div>`;
+    }).join("");
+
     box.innerHTML =
       `<div class="q-label">Agent 想确认一下</div>` +
-      `<div class="q-text">${esc(p.reason || "")}</div>` +
-      (options.length ? `<div class="q-opts">${options.map((o) => `<button type="button" data-opt="${esc(o)}">${esc(o)}</button>`).join("")}</div>` : "") +
-      `<div class="q-reply"><input type="text" placeholder="输入回答…"><button class="primary" type="button" data-send="1">回答</button></div>`;
+      (questions.length > 1 ? `<div class="q-hint">${questions.length} 个问题，请分别作答</div>` : "") +
+      rows +
+      `<div class="q-actions"><button class="primary" type="button" data-send="1">${questions.length > 1 ? "提交回答" : "回答"}</button></div>`;
 
-    const input = box.querySelector("input");
-    const finish = async (text, btn) => {
-      if (!text) return;
+    const inputs = [...box.querySelectorAll("[data-input]")].map((el) => el);
+    box.querySelectorAll("[data-opt]").forEach((btn) => {
+      btn.onclick = () => {
+        const i = Number(btn.dataset.i);
+        const wrap = box.querySelector(`[data-opts="${i}"]`);
+        wrap.querySelectorAll("button").forEach((b) => b.classList.remove("on"));
+        btn.classList.add("on");
+        if (inputs[i]) inputs[i].value = btn.dataset.opt;
+      };
+    });
+
+    const send = async () => {
+      const answers = inputs.map((el, i) => ({ question: questions[i].question, answer: el.value.trim() }));
+      const missing = answers.findIndex((a) => !a.answer);
+      if (missing >= 0) {
+        inputs[missing].focus();
+        inputs[missing].classList.add("missing");
+        setTimeout(() => inputs[missing].classList.remove("missing"), 1200);
+        return;
+      }
+      const btn = box.querySelector("[data-send]");
+      btn.disabled = true;
       box.querySelectorAll("button, input").forEach((el) => (el.disabled = true));
       try {
-        await answerApproval(approvalId, true, text);
+        await answerApproval(approvalId, true, JSON.stringify({ answers }));
+        resolveApproval(approvalId);
         box.classList.add("resolved");
-        box.querySelector(".q-reply")?.remove();
-        box.querySelector(".q-opts")?.remove();
-        const answered = document.createElement("div");
-        answered.className = "q-answer";
-        answered.textContent = "已回答：" + text;
-        box.appendChild(answered);
+        box.querySelectorAll(".q-opts, .q-item input, .q-actions").forEach((el) => el.remove());
+        const summary = document.createElement("div");
+        summary.className = "q-answer";
+        summary.textContent = answers.map((a, i) => (questions.length > 1 ? `${i + 1}. ${a.answer}` : a.answer)).join(" · ");
+        box.appendChild(summary);
       } catch (e) {
         showError(e);
         box.querySelectorAll("button, input").forEach((el) => (el.disabled = false));
-      } finally {
-        if (approvalId) resolveApproval(approvalId);
-        if (btn) btn.disabled = false;
+        btn.disabled = false;
       }
     };
-    box.querySelectorAll("[data-opt]").forEach((btn) => {
-      btn.onclick = () => finish(btn.dataset.opt, btn);
-    });
-    box.querySelector("[data-send]").onclick = () => finish(input.value.trim(), box.querySelector("[data-send]"));
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); finish(input.value.trim(), box.querySelector("[data-send]")); }
+
+    box.querySelector("[data-send]").onclick = send;
+    inputs.forEach((el) => {
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); send(); }
+      });
     });
   } else {
     box.className = "approval";

@@ -160,8 +160,8 @@ func (a *Actor) beforeToolCall(ctx context.Context, _ string, name string, args 
 	// 「向用户提问」：Agent 执行 `sounder-ask "问题" [--options "A|B"]` 时，
 	// 不真的跑 shell，而是把问题抛给控制端，回答作为工具结果返回给模型。
 	if name == "bash" {
-		if question, options, ok := parseAskUser(args); ok {
-			answer, err := a.askUser(ctx, question, options)
+		if questions, ok := parseAskUser(args); ok {
+			answer, err := a.askUser(ctx, questions)
 			if err != nil {
 				log.Printf("session %s ask_user failed: %v", a.ID, err)
 				return agent.ToolCallHookResult{Block: true, Reason: "用户没有回答：" + err.Error()}
@@ -628,24 +628,38 @@ func toolOutput(r agent.AgentToolResult) string {
 	return s
 }
 
-// askUser 通过审批通道向用户提问，阻塞直到用户回答或超时。
-func (a *Actor) askUser(ctx context.Context, question string, options []string) (string, error) {
+// AskQuestion 是给 Agent 用的单个问题。
+type AskQuestion struct {
+	Question string   `json:"question"`
+	Options  []string `json:"options,omitempty"`
+}
+
+// askUser 通过审批通道向用户提问（支持一次多个问题），阻塞直到用户回答或超时。
+func (a *Actor) askUser(ctx context.Context, questions []AskQuestion) (string, error) {
 	a.mu.Lock()
 	approver := a.approver
 	a.mu.Unlock()
 	if approver == nil {
 		return "", fmt.Errorf("当前没有连接控制端，无法提问")
 	}
-	args := map[string]any{}
-	if len(options) > 0 {
-		args["options"] = options
+	if len(questions) == 0 {
+		return "", fmt.Errorf("没有问题内容")
+	}
+
+	args := map[string]any{"questions": questions}
+	reason := questions[0].Question
+	if len(questions) == 1 && len(questions[0].Options) > 0 {
+		args["options"] = questions[0].Options
+	}
+	if len(questions) > 1 {
+		reason = fmt.Sprintf("%d 个问题需要确认", len(questions))
 	}
 	req := approval.Request{
 		ID:        newID(),
 		SessionID: a.ID,
 		Tool:      "ask_user",
 		Level:     "question",
-		Reason:    question,
+		Reason:    reason,
 		Args:      args,
 	}
 	a.emit(protocol.TypeApprovalAsk, map[string]any{
@@ -662,26 +676,72 @@ func (a *Actor) askUser(ctx context.Context, question string, options []string) 
 	if !res.Allow {
 		return "", fmt.Errorf("用户取消了回答")
 	}
-	answer := strings.TrimSpace(res.Reason)
-	if answer == "" {
+	raw := strings.TrimSpace(res.Reason)
+	if raw == "" {
 		return "", fmt.Errorf("用户没有给出内容")
 	}
-	return answer, nil
+	return formatAskAnswers(questions, raw), nil
+}
+
+// formatAskAnswers 把用户回答整理成模型容易读的文本。
+func formatAskAnswers(questions []AskQuestion, raw string) string {
+	var payload struct {
+		Answers []struct {
+			Question string `json:"question"`
+			Answer   string `json:"answer"`
+		} `json:"answers"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err == nil && len(payload.Answers) > 0 {
+		var b strings.Builder
+		b.WriteString("用户回答：\n")
+		for i, a := range payload.Answers {
+			q := a.Question
+			if q == "" && i < len(questions) {
+				q = questions[i].Question
+			}
+			fmt.Fprintf(&b, "%d) %s → %s\n", i+1, q, a.Answer)
+		}
+		return strings.TrimSpace(b.String())
+	}
+	return "用户回答：" + raw
 }
 
 // parseAskUser 识别 `sounder-ask ...` 这种约定写法。
-func parseAskUser(args json.RawMessage) (string, []string, bool) {
+//   - 单个问题：sounder-ask "问题" [--options "A|B"]
+//   - 多个问题：sounder-ask --json '{"questions":[{"question":"..","options":["A","B"]}]}'
+func parseAskUser(args json.RawMessage) ([]AskQuestion, bool) {
 	var p struct {
 		Command string `json:"command"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
-		return "", nil, false
+		return nil, false
 	}
 	cmd := strings.TrimSpace(p.Command)
 	if !strings.HasPrefix(cmd, "sounder-ask") {
-		return "", nil, false
+		return nil, false
 	}
 	rest := strings.TrimSpace(strings.TrimPrefix(cmd, "sounder-ask"))
+
+	// 多问题：--json '{...}'
+	if idx := strings.Index(rest, "--json"); idx >= 0 {
+		raw := strings.TrimSpace(rest[idx+len("--json"):])
+		raw = strings.Trim(raw, "\"'")
+		var payload struct {
+			Questions []AskQuestion `json:"questions"`
+		}
+		if err := json.Unmarshal([]byte(raw), &payload); err == nil && len(payload.Questions) > 0 {
+			out := payload.Questions[:0]
+			for _, q := range payload.Questions {
+				if strings.TrimSpace(q.Question) != "" {
+					out = append(out, q)
+				}
+			}
+			if len(out) > 0 {
+				return out, true
+			}
+		}
+		return nil, false
+	}
 
 	var options []string
 	if idx := strings.Index(rest, "--options"); idx >= 0 {
@@ -696,7 +756,7 @@ func parseAskUser(args json.RawMessage) (string, []string, bool) {
 	}
 	question := strings.Trim(rest, "\"'`")
 	if question == "" {
-		return "", nil, false
+		return nil, false
 	}
-	return question, options, true
+	return []AskQuestion{{Question: question, Options: options}}, true
 }
