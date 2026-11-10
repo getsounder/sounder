@@ -38,13 +38,14 @@ type wireFrame struct {
 type Client struct {
 	url        string
 	token      string
+	tokenFunc  func() string
 	localToken string
 	workerID   string
-	kind     string
-	version  string
-	capacity int
-	used     func() int
-	local    string
+	kind       string
+	version    string
+	capacity   int
+	used       func() int
+	local      string
 
 	send   chan []byte
 	client *http.Client
@@ -56,13 +57,13 @@ func New(url, token, localToken, workerID, kind, version, localBase string, capa
 		token:      token,
 		localToken: localToken,
 		workerID:   workerID,
-		kind:     kind,
-		version:  version,
-		capacity: capacity,
-		used:     used,
-		local:    localBase,
-		send:     make(chan []byte, 1024),
-		client:   &http.Client{Timeout: 60 * time.Second},
+		kind:       kind,
+		version:    version,
+		capacity:   capacity,
+		used:       used,
+		local:      localBase,
+		send:       make(chan []byte, 1024),
+		client:     &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
@@ -89,10 +90,22 @@ func (c *Client) Run(ctx context.Context) {
 	}
 }
 
+// SetTokenFunc 让隧道每次重连时取最新令牌（设备密钥换来的短期令牌会过期）。
+func (c *Client) SetTokenFunc(fn func() string) { c.tokenFunc = fn }
+
+func (c *Client) currentToken() string {
+	if c.tokenFunc != nil {
+		if t := c.tokenFunc(); t != "" {
+			return t
+		}
+	}
+	return c.token
+}
+
 func (c *Client) session(ctx context.Context) error {
 	header := http.Header{}
-	if c.token != "" {
-		header.Set("Authorization", "Bearer "+c.token)
+	if tok := c.currentToken(); tok != "" {
+		header.Set("Authorization", "Bearer "+tok)
 	}
 
 	ws, _, err := websocket.DefaultDialer.DialContext(ctx, c.url, header)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/getsounder/sounder-server/internal/auth"
@@ -119,30 +120,33 @@ func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 		// 配置了 provisioner 就按配额真正开一台，否则退回"认领空闲 Worker"。
 		if s.prov.Enabled() {
 			deviceID := store.NewDeviceID()
-			var workerTok string
+			var workerTok, deviceKey string
 			if s.workerSecret != "" {
-				tok, err := auth.SignWorkerToken(s.workerSecret, auth.WorkerToken{
-					WorkerID: deviceID,
-					UserID:   ctx.UserID,
-					Kind:     "cloud",
-					Expiry:   time.Now().Add(24 * time.Hour).Unix(),
-				})
-				if err != nil {
-					writeErr(w, http.StatusInternalServerError, err.Error())
-					return
+				if tok, err := auth.SignWorkerToken(s.workerSecret, auth.WorkerToken{
+					WorkerID: deviceID, UserID: ctx.UserID, Kind: "cloud", Use: "gateway",
+					Expiry: time.Now().Add(time.Hour).Unix(),
+				}); err == nil {
+					workerTok = tok
 				}
-				workerTok = tok
+				if key, err := auth.SignWorkerToken(s.workerSecret, auth.WorkerToken{
+					WorkerID: deviceID, UserID: ctx.UserID, Kind: "cloud", Use: "device-key",
+					Expiry: time.Now().Add(90 * 24 * time.Hour).Unix(),
+				}); err == nil {
+					deviceKey = key
+				}
 			}
 			res, err := s.prov.Create(r.Context(), provision.Request{
-				DeviceID:    deviceID,
-				UserID:      ctx.UserID,
-				WorkerToken: workerTok,
-				Name:        req.Name,
-				Form:        provision.Form(req.Form).Normalize(),
-				CPU:         quota.DeviceCPU,
-				MemMB:       quota.DeviceMemMB,
-				DiskGB:      quota.DeviceDiskGB,
-				Env:         workerEnv(),
+				DeviceID:     deviceID,
+				UserID:       ctx.UserID,
+				WorkerToken:  workerTok,
+				DeviceKey:    deviceKey,
+				ControlPlane: s.provisionerControlPlane,
+				Name:         req.Name,
+				Form:         provision.Form(req.Form).Normalize(),
+				CPU:          quota.DeviceCPU,
+				MemMB:        quota.DeviceMemMB,
+				DiskGB:       quota.DeviceDiskGB,
+				Env:          workerEnv(),
 			})
 			if err != nil {
 				writeErr(w, http.StatusBadGateway, "创建云端设备失败: "+err.Error())
@@ -297,6 +301,8 @@ func (s *Server) handleWorkerToken(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		WorkerID string `json:"workerId"`
 		Kind     string `json:"kind,omitempty"`
+		Use      string `json:"use,omitempty"` // gateway（默认，短期）| device-key（长期，用于换短期令牌）
+		TTLHours int    `json:"ttlHours,omitempty"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
@@ -329,11 +335,23 @@ func (s *Server) handleWorkerToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exp := time.Now().Add(24 * time.Hour)
+	use := req.Use
+	if use == "" {
+		use = "gateway"
+	}
+	ttl := 24 * time.Hour
+	if use == "device-key" {
+		ttl = 90 * 24 * time.Hour
+	}
+	if req.TTLHours > 0 && req.TTLHours < 24*90 {
+		ttl = time.Duration(req.TTLHours) * time.Hour
+	}
+	exp := time.Now().Add(ttl)
 	tok, err := auth.SignWorkerToken(s.workerSecret, auth.WorkerToken{
 		WorkerID: req.WorkerID,
 		UserID:   ctx.UserID,
 		Kind:     req.Kind,
+		Use:      use,
 		Expiry:   exp.Unix(),
 	})
 	if err != nil {
@@ -343,6 +361,7 @@ func (s *Server) handleWorkerToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":     tok,
 		"workerId":  req.WorkerID,
+		"use":       use,
 		"expiresAt": exp.UTC().Format(time.RFC3339),
 	})
 }
@@ -387,27 +406,33 @@ func (s *Server) handleStartDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	quota, _ := s.store.GetQuota(ctx.UserID)
-	var workerTok string
+	var workerTok, deviceKey string
 	if s.workerSecret != "" {
 		if tok, err := auth.SignWorkerToken(s.workerSecret, auth.WorkerToken{
-			WorkerID: dev.WorkerID,
-			UserID:   ctx.UserID,
-			Kind:     "cloud",
-			Expiry:   time.Now().Add(30 * 24 * time.Hour).Unix(),
+			WorkerID: dev.WorkerID, UserID: ctx.UserID, Kind: "cloud", Use: "gateway",
+			Expiry: time.Now().Add(time.Hour).Unix(),
 		}); err == nil {
 			workerTok = tok
 		}
+		if key, err := auth.SignWorkerToken(s.workerSecret, auth.WorkerToken{
+			WorkerID: dev.WorkerID, UserID: ctx.UserID, Kind: "cloud", Use: "device-key",
+			Expiry: time.Now().Add(90 * 24 * time.Hour).Unix(),
+		}); err == nil {
+			deviceKey = key
+		}
 	}
 	err := s.prov.Start(r.Context(), provision.Request{
-		DeviceID:    dev.WorkerID,
-		UserID:      ctx.UserID,
-		WorkerToken: workerTok,
-		Name:        dev.Name,
-		Form:        provision.Form(dev.Form).Normalize(),
-		CPU:         quota.DeviceCPU,
-		MemMB:       quota.DeviceMemMB,
-		DiskGB:      quota.DeviceDiskGB,
-		Env:         workerEnv(),
+		DeviceID:     dev.WorkerID,
+		UserID:       ctx.UserID,
+		WorkerToken:  workerTok,
+		DeviceKey:    deviceKey,
+		ControlPlane: s.provisionerControlPlane,
+		Name:         dev.Name,
+		Form:         provision.Form(dev.Form).Normalize(),
+		CPU:          quota.DeviceCPU,
+		MemMB:        quota.DeviceMemMB,
+		DiskGB:       quota.DeviceDiskGB,
+		Env:          workerEnv(),
 	})
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "开机失败: "+err.Error())
@@ -497,4 +522,39 @@ func (s *Server) handleSetQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, q)
+}
+
+// handleRefreshWorkerToken 用长期设备密钥换短期网关令牌（Worker 自己调用，不需要用户会话）。
+func (s *Server) handleRefreshWorkerToken(w http.ResponseWriter, r *http.Request) {
+	if s.workerSecret == "" {
+		writeErr(w, http.StatusServiceUnavailable, "worker secret not configured")
+		return
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	key, err := auth.VerifyWorkerToken(s.workerSecret, token)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "invalid device key")
+		return
+	}
+	if key.Use != "device-key" {
+		writeErr(w, http.StatusForbidden, "device key required")
+		return
+	}
+	exp := time.Now().Add(time.Hour)
+	gwToken, err := auth.SignWorkerToken(s.workerSecret, auth.WorkerToken{
+		WorkerID: key.WorkerID,
+		UserID:   key.UserID,
+		Kind:     key.Kind,
+		Use:      "gateway",
+		Expiry:   exp.Unix(),
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":     gwToken,
+		"workerId":  key.WorkerID,
+		"expiresAt": exp.UTC().Format(time.RFC3339),
+	})
 }

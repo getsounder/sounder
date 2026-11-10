@@ -42,8 +42,10 @@ type deviceRuntime struct {
 	runner Runner
 
 	// 控制面登录后下发的隧道参数（优先于启动参数）
-	tunnelGateway string
-	tunnelToken   string
+	tunnelGateway      string
+	tunnelToken        string
+	tunnelControlPlane string
+	tunnelDeviceKey    string
 }
 
 type devicesFile struct {
@@ -392,6 +394,12 @@ func (s *Service) RemoveDevice(id string) error {
 // SetDeviceTunnel 用控制面下发的设备 token 重新拉起设备，
 // 让隧道凭据从"共享管理 token"换成"这台设备专属的 token"。
 func (s *Service) SetDeviceTunnel(id, gateway, token string) (Device, error) {
+	return s.SetDeviceTunnelWithKey(id, gateway, token, "", "")
+}
+
+// SetDeviceTunnelWithKey 进一步支持"设备密钥 + 控制面"模式：
+// Worker 自己用长期密钥换短期网关令牌，容器启动参数里不再放长期凭据。
+func (s *Service) SetDeviceTunnelWithKey(id, gateway, token, controlPlane, deviceKey string) (Device, error) {
 	s.mu.Lock()
 	if err := s.loadDevices(); err != nil {
 		s.mu.Unlock()
@@ -402,9 +410,12 @@ func (s *Service) SetDeviceTunnel(id, gateway, token string) (Device, error) {
 		s.mu.Unlock()
 		return Device{}, fmt.Errorf("device not found")
 	}
-	changed := d.tunnelGateway != gateway || d.tunnelToken != token
+	changed := d.tunnelGateway != gateway || d.tunnelToken != token ||
+		d.tunnelControlPlane != controlPlane || d.tunnelDeviceKey != deviceKey
 	d.tunnelGateway = gateway
 	d.tunnelToken = token
+	d.tunnelControlPlane = controlPlane
+	d.tunnelDeviceKey = deviceKey
 	if !changed && d.runner != nil {
 		dev := d.Device
 		s.mu.Unlock()
@@ -490,12 +501,21 @@ func (s *Service) workerExtraArgs(d *deviceRuntime) []string {
 	}
 	kind := "desktop"
 	args := []string{"-gateway=" + gw, "-worker-id=" + d.ID, "-worker-kind=" + kind}
-	token := s.cfg.GatewayToken
-	if d.tunnelToken != "" {
-		token = d.tunnelToken
-	}
-	if token != "" {
-		args = append(args, "-gateway-token="+token)
+	if d.tunnelDeviceKey != "" && d.tunnelControlPlane != "" {
+		cp := d.tunnelControlPlane
+		if d.Kind != "desktop-process" {
+			cp = strings.ReplaceAll(cp, "127.0.0.1", "host.docker.internal")
+			cp = strings.ReplaceAll(cp, "localhost", "host.docker.internal")
+		}
+		args = append(args, "-control-plane="+cp, "-device-key="+d.tunnelDeviceKey)
+	} else {
+		token := s.cfg.GatewayToken
+		if d.tunnelToken != "" {
+			token = d.tunnelToken
+		}
+		if token != "" {
+			args = append(args, "-gateway-token="+token)
+		}
 	}
 	return args
 }

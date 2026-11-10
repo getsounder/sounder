@@ -103,7 +103,10 @@ func (d *Docker) workerArgs(req Request) []string {
 	if d.GatewayURL != "" {
 		args = append(args, "-gateway="+d.GatewayURL)
 	}
-	if req.WorkerToken != "" {
+	// 优先用设备密钥自行换令牌，这样令牌可以很短命。
+	if req.DeviceKey != "" && req.ControlPlane != "" {
+		args = append(args, "-control-plane="+req.ControlPlane, "-device-key="+req.DeviceKey)
+	} else if req.WorkerToken != "" {
 		args = append(args, "-gateway-token="+req.WorkerToken)
 	}
 	return args

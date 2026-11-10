@@ -51,7 +51,11 @@ func main() {
 	workerImage := flag.String("worker-image", env("SOUNDER_WORKER_IMAGE", "ghcr.io/getsounder/sounder-worker:dev"), "provisioner 创建的 Worker 镜像")
 	workerModel := flag.String("worker-model", env("SOUNDER_WORKER_MODEL", ""), "新 Worker 的默认模型")
 	dockerHost := flag.String("docker-host", env("SOUNDER_DOCKER_HOST", "unix:///var/run/docker.sock"), "Docker socket（-provisioner=docker）")
+	k8sNamespace := flag.String("k8s-namespace", env("SOUNDER_K8S_NAMESPACE", "sounder"), "K8s 命名空间（-provisioner=k8s）")
+	k8sStorageClass := flag.String("k8s-storage-class", env("SOUNDER_K8S_STORAGE_CLASS", ""), "PVC StorageClass；留空用集群默认")
+	k8sServiceAccount := flag.String("k8s-service-account", env("SOUNDER_K8S_SERVICE_ACCOUNT", "default"), "Worker Pod 的 ServiceAccount")
 	provisionerGateway := flag.String("provisioner-gateway", env("SOUNDER_PROVISIONER_GATEWAY", ""), "provisioner 创建的 Worker 该连的网关地址；留空则由 public-gateway 推导（localhost→host.docker.internal）")
+	provisionerCP := flag.String("provisioner-control-plane", env("SOUNDER_PROVISIONER_CONTROL_PLANE", ""), "Worker 换短期令牌用的控制面地址；留空由 public-url 推导（localhost→host.docker.internal）")
 	token := flag.String("token", env("SOUNDER_TOKEN", ""), "控制端访问本服务的 token；为空则不校验")
 	storeKind := flag.String("store", "memory", "memory | postgres")
 	dsn := flag.String("dsn", "", "PostgreSQL DSN（-store=postgres 时必填）")
@@ -134,8 +138,14 @@ func main() {
 	}
 
 	gw := gateway.New(*gwURL, *gwToken)
+	controlPlane := *provisionerCP
+	if controlPlane == "" {
+		controlPlane = hostReachable(*publicURL)
+	}
+
 	var prov provision.Provisioner = provision.Disabled{}
-	if *provisioner == "docker" {
+	switch *provisioner {
+	case "docker":
 		tunnelURL := *provisionerGateway
 		if tunnelURL == "" {
 			tunnelURL = hostReachable(*publicGateway)
@@ -144,9 +154,23 @@ func main() {
 			tunnelURL = internalGatewayWS(*gwURL)
 		}
 		prov = provision.NewDocker(*dockerHost, *workerImage, tunnelURL, "cloud", *workerModel, 4)
-		log.Printf("provisioner: docker (image=%s, gateway=%s)", *workerImage, tunnelURL)
+		log.Printf("provisioner: docker (image=%s, gateway=%s, control-plane=%s)", *workerImage, tunnelURL, controlPlane)
+	case "k8s":
+		tunnelURL := *provisionerGateway
+		if tunnelURL == "" {
+			tunnelURL = hostReachable(*publicGateway)
+		}
+		if tunnelURL == "" {
+			tunnelURL = internalGatewayWS(*gwURL)
+		}
+		k8sProv, err := provision.NewKubernetes(*k8sNamespace, *workerImage, tunnelURL, controlPlane, "cloud", *workerModel, *k8sStorageClass, *k8sServiceAccount, 4)
+		if err != nil {
+			log.Fatalf("k8s provisioner: %v", err)
+		}
+		prov = k8sProv
+		log.Printf("provisioner: k8s (ns=%s, image=%s, gateway=%s)", *k8sNamespace, *workerImage, tunnelURL)
 	}
-	srv := api.New(st, ast, authSvc, gw, *token, *publicGateway, *workerSecret, prov)
+	srv := api.New(st, ast, authSvc, gw, *token, *publicGateway, *workerSecret, prov, controlPlane)
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
