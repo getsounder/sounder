@@ -27,6 +27,29 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS owner_id TEXT;
 CREATE INDEX IF NOT EXISTS sessions_created_at_idx ON sessions (created_at DESC);
 CREATE INDEX IF NOT EXISTS sessions_owner_idx ON sessions (owner_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS devices (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    worker_id    TEXT NOT NULL,
+    name         TEXT NOT NULL DEFAULT '',
+    kind         TEXT NOT NULL DEFAULT 'cloud',
+    platform     TEXT NOT NULL DEFAULT '',
+    version      TEXT NOT NULL DEFAULT '',
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, worker_id)
+);
+CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id, last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS user_quotas (
+    user_id        TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    max_devices    INT NOT NULL DEFAULT 1,
+    device_cpu     INT NOT NULL DEFAULT 2,
+    device_mem_mb  INT NOT NULL DEFAULT 4096,
+    device_disk_gb INT NOT NULL DEFAULT 20,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id             TEXT PRIMARY KEY,
     email          TEXT,

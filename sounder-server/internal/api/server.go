@@ -35,6 +35,10 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/meta", s.handleMeta)
 	mux.HandleFunc("GET /v1/workers", s.handleWorkers)
+	mux.HandleFunc("GET /v1/devices", s.handleDevices)
+	mux.HandleFunc("POST /v1/devices", s.handleCreateDevice)
+	mux.HandleFunc("PATCH /v1/devices/{id}", s.handleRenameDevice)
+	mux.HandleFunc("DELETE /v1/devices/{id}", s.handleDeleteDevice)
 
 	mux.HandleFunc("GET /v1/auth/providers", s.handleAuthProviders)
 	mux.HandleFunc("POST /v1/auth/register", s.handleRegister)
@@ -223,6 +227,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// 第一次在某台设备上开会话时自动登记设备，用户不用先手动添加。
+	s.touchDevice(r, owner, workerID)
 	writeJSON(w, http.StatusCreated, sess)
 }
 
@@ -246,11 +252,21 @@ func (s *Server) pickWorker(ctx context.Context) (string, error) {
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	ctx := authFrom(r)
+	list := s.store.ListByOwner(ctx.UserID)
 	if ctx.Admin {
-		writeJSON(w, http.StatusOK, map[string]any{"sessions": s.store.List()})
-		return
+		list = s.store.List()
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sessions": s.store.ListByOwner(ctx.UserID)})
+	// 支持按设备（worker）过滤，界面切设备时只显示该设备上的会话。
+	if wid := r.URL.Query().Get("workerId"); wid != "" {
+		filtered := make([]store.Session, 0, len(list))
+		for _, sess := range list {
+			if sess.WorkerID == wid {
+				filtered = append(filtered, sess)
+			}
+		}
+		list = filtered
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": list})
 }
 
 // ownedSession 读取当前登录用户拥有的会话；管理员（-token 兼容模式）可见全部。
