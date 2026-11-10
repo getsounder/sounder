@@ -354,7 +354,7 @@ Android 侧需要：
 4. **Worker 侧需要配合**：`/v1/approvals` 目前只按 worker 过滤，返回该 Worker 上所有审批。
    建议给审批项加 `sessionId`，服务端据此校验归属；否则同一 Worker 上的用户会互相看到审批。
 5. 管理员：`is_admin` 可查看全部，但默认仍按 owner 过滤。
-6. 兼容：`-auth=false` 或仅用 `-token` 时，请求注入 `usr_legacy` 用户（管理员），
+6. 兼容：`-auth=false`（未启用用户体系）时是单租户本地模式，请求注入 `usr_local`（管理员）；
    所有历史会话归它，保证 `docker compose up` 仍然开箱即用。
 
 ## 9. 安全清单
@@ -438,7 +438,7 @@ SOUNDER_COOKIE_DOMAIN=
 
 - 本地注册/登录、重复注册、弱密码、错误密码、匿名访问；
 - Bearer token、Web 反向代理 Cookie 会话；
-- 账号 A/B 的会话创建、列表、读取、删除隔离，以及 legacy token 可见全部；
+- 账号 A/B 的会话创建、列表、读取、删除隔离，以及 管理员账号可见全部；
 - 会话吊销、登出、改密后旧 token 失效、忘记密码/重置密码（从容器日志读取重置链接）；
 - 身份绑定查询、解绑唯一登录方式返回 409；
 - CORS 白名单（回显 Origin + credentials，未知 Origin 返回 `*`）；

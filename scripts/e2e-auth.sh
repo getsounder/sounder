@@ -17,7 +17,9 @@ set -uo pipefail
 
 API_BASE=${API_BASE:-http://localhost:8000}
 WEB_BASE=${WEB_BASE:-http://localhost:3000}
-LEGACY_TOKEN=${LEGACY_TOKEN:-dev-token}
+ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sounder.local}
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin12345!}
+ADMIN_TOKEN=""
 SERVER_CONTAINER=${SERVER_CONTAINER:-sounder-sounder-server-1}
 WORKER_WAIT_SECONDS=${WORKER_WAIT_SECONDS:-120}
 
@@ -30,7 +32,7 @@ ses_a=""
 cleanup() {
   if [ -n "$ses_a" ]; then
     curl -sS --max-time 10 -o /dev/null -X DELETE \
-      -H "Authorization: Bearer $LEGACY_TOKEN" "$API_BASE/v1/sessions/$ses_a" 2>/dev/null || true
+      -H "Authorization: Bearer $ADMIN_TOKEN" "$API_BASE/v1/sessions/$ses_a" 2>/dev/null || true
   fi
   rm -rf "$TMP"
 }
@@ -100,6 +102,17 @@ expect_eq "local 登录默认开启" "$(json '.local')" "true"
 expect_eq "注册默认开启" "$(json '.registration')" "true"
 expect_eq "默认不暴露 dev provider" "$(json '.providers | length')" "0"
 
+section "1.5 管理员登录（管理接口用例需要）"
+if [ -n "$ADMIN_EMAIL" ]; then
+  code=$(call POST /v1/auth/login "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}")
+  if [ "$code" = "200" ]; then
+    ADMIN_TOKEN=$(json '.token')
+    ok "管理员登录成功"
+  else
+    bad "管理员登录失败，管理接口用例将跳过" "$(head -c 160 "$BODY" 2>/dev/null)"
+  fi
+fi
+
 section "2. 本地账号注册/登录"
 code=$(call POST /v1/auth/register "{\"email\":\"$email_a\",\"password\":\"$pw_a\",\"displayName\":\"E2E A\"}")
 expect_eq "注册账号 A 返回 201" "$code" "201"
@@ -146,7 +159,7 @@ code=$(curl -sS --max-time 20 -b "$COOKIE" -o "$BODY" -w '%{http_code}' "$WEB_BA
 expect_eq "使用 Cookie 通过 Web 代理访问 /me 返回 200" "$code" "200"
 expect_eq "Cookie 会话邮箱正确" "$(json '.user.email')" "$email_a"
 
-section "4. 会话归属与 legacy token"
+section "4. 会话归属与管理员视角"
 code=$(call POST /v1/auth/register "{\"email\":\"$email_b\",\"password\":\"$pw_b\",\"displayName\":\"E2E B\"}")
 expect_eq "注册账号 B 返回 201" "$code" "201"
 user_b=$(json '.user.id')
@@ -156,8 +169,8 @@ expect_nonempty "注册返回 B 的用户 ID" "$user_b"
 # 等 worker 重新连上 gateway（本地栈的 tunnel 会周期性重连）。
 workers=0
 deadline=$((SECONDS + WORKER_WAIT_SECONDS))
-while [ "$SECONDS" -lt "$deadline" ]; do
-  call GET /v1/workers "" "$LEGACY_TOKEN" >/dev/null
+while [ "$SECONDS" -lt "$deadline" ] && [ -n "$ADMIN_TOKEN" ]; do
+  call GET /v1/workers "" "$ADMIN_TOKEN" >/dev/null
   workers=$(json '.workers | length')
   [ "$workers" -gt 0 ] 2>/dev/null && break
   sleep 2
@@ -187,12 +200,16 @@ if [ "$workers" -gt 0 ] 2>/dev/null; then
     code=$(call DELETE "/v1/sessions/$ses_a" "" "$token_b")
     expect_eq "账号 B 删除 A 的会话返回 404" "$code" "404"
 
-    code=$(call GET /v1/sessions "" "$LEGACY_TOKEN")
-    expect_eq "legacy token 列出全部会话返回 200" "$code" "200"
-    expect_true "legacy token 能看到 A 的会话" "[ \"\$(json '[.sessions[] | select(.id == \"$ses_a\")] | length')\" = '1' ]"
+    if [ -n "$ADMIN_TOKEN" ]; then
+      code=$(call GET /v1/sessions "" "$ADMIN_TOKEN")
+      expect_eq "管理员账号列出全部会话返回 200" "$code" "200"
+      expect_true "管理员账号能看到 A 的会话" "[ \"\$(json '[.sessions[] | select(.id == \"$ses_a\")] | length')\" = '1' ]"
 
-    code=$(call GET "/v1/sessions/$ses_a" "" "$LEGACY_TOKEN")
-    expect_eq "legacy token 能读取 A 的会话" "$code" "200"
+      code=$(call GET "/v1/sessions/$ses_a" "" "$ADMIN_TOKEN")
+      expect_eq "管理员账号能读取 A 的会话" "$code" "200"
+    else
+      echo "  SKIP 管理员用例（未登录成功）"
+    fi
   else
     echo "  SKIP 其余会话归属用例（创建会话失败；worker 可能已达容量，可 docker compose restart sounder-worker）"
   fi

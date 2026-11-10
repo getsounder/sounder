@@ -14,7 +14,7 @@ import (
 	"github.com/getsounder/sounder-server/internal/store"
 )
 
-func newTestAPI(token string) (*Server, store.Store, store.AuthStore, http.Handler) {
+func newTestAPI(_ ...string) (*Server, store.Store, store.AuthStore, http.Handler) {
 	st := store.NewMemory()
 	ast := store.NewMemoryAuth()
 	svc := auth.New(auth.Config{
@@ -25,8 +25,7 @@ func newTestAPI(token string) (*Server, store.Store, store.AuthStore, http.Handl
 		DevProvider:         true,
 		SessionTTL:          time.Hour,
 	}, ast, nil)
-	_ = store.EnsureLegacyUser(ast, LegacyUserID)
-	srv := New(st, ast, svc, nil, token, "", "", nil, "")
+	srv := New(st, ast, svc, nil, "", "", nil, "")
 	return srv, st, ast, srv.Handler()
 }
 
@@ -171,22 +170,28 @@ func TestSessionOwnership(t *testing.T) {
 	}
 }
 
-func TestLegacyTokenSeesAll(t *testing.T) {
-	_, st, _, h := newTestAPI("dev-token")
+func TestAdminSeesAllSessions(t *testing.T) {
+	_, st, ast, h := newTestAPI()
 	now := time.Now()
 	_ = st.Create(store.Session{ID: "ses_1", OwnerID: "usr_other", WorkerID: "w1", CreatedAt: now})
 	_ = st.Create(store.Session{ID: "ses_2", OwnerID: "usr_other2", WorkerID: "w1", CreatedAt: now})
 
-	w := doJSON(t, h, http.MethodGet, "/v1/sessions", "", map[string]string{"Authorization": "Bearer dev-token"})
+	token, user := registerUser(t, h, "admin-all@example.com", "password-admin")
+	user.IsAdmin = true
+	if err := ast.UpdateUser(user); err != nil {
+		t.Fatal(err)
+	}
+
+	w := doJSON(t, h, http.MethodGet, "/v1/sessions", "", map[string]string{"Authorization": "Bearer " + token})
 	if w.Code != http.StatusOK {
-		t.Fatalf("legacy list: %d %s", w.Code, w.Body.String())
+		t.Fatalf("admin list: %d %s", w.Code, w.Body.String())
 	}
 	var list struct {
 		Sessions []store.Session `json:"sessions"`
 	}
 	decode(t, w, &list)
 	if len(list.Sessions) != 2 {
-		t.Fatalf("legacy should see all, got %d", len(list.Sessions))
+		t.Fatalf("admin should see all, got %d", len(list.Sessions))
 	}
 
 	w = doJSON(t, h, http.MethodGet, "/v1/sessions", "", nil)
@@ -365,25 +370,21 @@ func TestCORSCredentialsOnlyForConfiguredOrigins(t *testing.T) {
 	}
 }
 
-func TestAuthDisabledLegacyMode(t *testing.T) {
+func TestAuthDisabledOpenMode(t *testing.T) {
 	st := store.NewMemory()
 	ast := store.NewMemoryAuth()
-	if err := store.EnsureLegacyUser(ast, LegacyUserID); err != nil {
-		t.Fatal(err)
-	}
-	srv := New(st, ast, nil, nil, "dev-token", "", "", nil, "")
+	srv := New(st, ast, nil, nil, "", "", nil, "")
 	h := srv.Handler()
-	auth := map[string]string{"Authorization": "Bearer dev-token"}
 
-	w := doJSON(t, h, http.MethodGet, "/v1/auth/me", "", auth)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "usr_legacy") {
-		t.Fatalf("legacy me: %d %s", w.Code, w.Body.String())
+	// 没有用户体系时是单租户本地模式：接口直接放行。
+	w := doJSON(t, h, http.MethodGet, "/v1/sessions", "", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("open list: %d %s", w.Code, w.Body.String())
 	}
-	for _, p := range []string{"/v1/auth/sessions", "/v1/auth/identities"} {
-		w = doJSON(t, h, http.MethodGet, p, "", auth)
-		if w.Code != http.StatusNotFound {
-			t.Fatalf("%s should be disabled: %d %s", p, w.Code, w.Body.String())
-		}
+	// 用户体系相关接口在未启用时不可用。
+	w = doJSON(t, h, http.MethodGet, "/v1/auth/me", "", nil)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("auth me should be unauthorized: %d %s", w.Code, w.Body.String())
 	}
 }
 

@@ -112,7 +112,7 @@ curl -H "Authorization: Bearer dev-token" localhost:8000/v1/workers
 ./scripts/e2e-auth.sh                 # 用户体系 e2e：74 项断言
 ```
 
-认证 e2e 脚本覆盖本地注册/登录、Cookie + Bearer 会话、会话归属隔离、legacy token
+认证 e2e 脚本覆盖本地注册/登录、Cookie + Bearer 会话、会话归属隔离、admin account
 管理员可见性、会话吊销、改密/重置密码、身份解绑、CORS、OAuth 未配置行为、请求体上限
 和注册限流。脚本会在本地库创建随机邮箱的临时账号，并在结束时删除自己创建的会话。
 

@@ -81,7 +81,6 @@ services:
         GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
     command:
       - "-addr=0.0.0.0:9090"
-      - "-token=${SOUNDER_TOKEN:-dev-token}"
       - "-worker-secret=${SOUNDER_WORKER_SECRET:-dev-worker-secret}"
       - "-stale=90s"
     ports:
@@ -102,7 +101,6 @@ services:
       - "-addr=0.0.0.0:8000"
       - "-gateway=http://sounder-gateway:9090"
       - "-gateway-token=${SOUNDER_TOKEN:-dev-token}"
-      - "-token=${SOUNDER_TOKEN:-dev-token}"
       - "-store=postgres"
       - "-dsn=postgres://sounder:${POSTGRES_PASSWORD:-sounder}@sounder-postgres:5432/sounder?sslmode=disable"
       - "-public-gateway=${SOUNDER_PUBLIC_GATEWAY:-ws://localhost:19090/v1/tunnel}"

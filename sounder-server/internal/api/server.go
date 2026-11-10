@@ -32,13 +32,13 @@ type Server struct {
 	provisionerControlPlane string // Worker 换短期令牌用的控制面地址
 }
 
-func New(st store.Store, authStore store.AuthStore, authSvc *auth.Service, gw *gateway.Client, token, publicGateway, workerSecret string, prov provision.Provisioner, provisionerControlPlane string) *Server {
+func New(st store.Store, authStore store.AuthStore, authSvc *auth.Service, gw *gateway.Client, publicGateway, workerSecret string, prov provision.Provisioner, provisionerControlPlane string) *Server {
 	if prov == nil {
 		prov = provision.Disabled{}
 	}
 	return &Server{
 		store: st, authStore: authStore, auth: authSvc, gw: gw,
-		token: token, publicGateway: publicGateway, workerSecret: workerSecret,
+		publicGateway: publicGateway, workerSecret: workerSecret,
 		prov: prov, provisionerControlPlane: provisionerControlPlane,
 	}
 }
@@ -142,7 +142,8 @@ func (s *Server) cors(next http.Handler) http.Handler {
 }
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
-	open := s.auth == nil && s.token == ""
+	// 关闭用户体系（-auth=false）时是单租户本地模式：不做鉴权。
+	open := s.auth == nil
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 探针不应需要凭证。
 		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
@@ -154,7 +155,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if open {
-			ctx := authContext{UserID: legacyUserID, Admin: true}
+			ctx := authContext{UserID: localUserID, Admin: true}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), authCtxKey{}, ctx)))
 			return
 		}
@@ -235,9 +236,6 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	ctx := authFrom(r)
 	owner := ctx.UserID
-	if owner == "" {
-		owner = legacyUserID
-	}
 	sess := store.Session{
 		ID:        created.ID,
 		OwnerID:   owner,

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net"
@@ -13,11 +12,8 @@ import (
 	"github.com/getsounder/sounder-server/internal/store"
 )
 
-// legacyUserID 是 -token 兼容模式下使用的 owner。
-const legacyUserID = "usr_legacy"
-
-// LegacyUserID 暴露给启动代码，用于保证兼容模式下的 owner 记录存在。
-const LegacyUserID = legacyUserID
+// localUserID 是关闭用户体系（-auth=false）时使用的单租户 owner。
+const localUserID = "usr_local"
 
 type authContext struct {
 	UserID    string
@@ -53,9 +49,6 @@ func (s *Server) authenticate(r *http.Request) (authContext, bool) {
 		if u, sess, err := s.auth.Authenticate(token); err == nil {
 			return authContext{UserID: u.ID, SessionID: sess.ID, Token: token, Admin: u.IsAdmin}, true
 		}
-	}
-	if s.token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(s.token)) == 1 {
-		return authContext{UserID: legacyUserID, Token: token, Admin: true}, true
 	}
 	return authContext{}, false
 }
