@@ -46,11 +46,12 @@ type SessionView struct {
 	Model string `json:"model,omitempty"`
 	State string `json:"state"`
 	// Pending 表示正在等待用户的交互：approval（工具审批）| question（提问）
-	Pending   string `json:"pending,omitempty"`
-	PendingN  int    `json:"pendingCount,omitempty"`
-	Title     string `json:"title,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	CreatedAt string `json:"createdAt,omitempty"`
+	Pending      string `json:"pending,omitempty"`
+	PendingN     int    `json:"pendingCount,omitempty"`
+	Title        string `json:"title,omitempty"`
+	Workspace    string `json:"workspace,omitempty"`
+	CreatedAt    string `json:"createdAt,omitempty"`
+	LastActiveAt string `json:"lastActiveAt,omitempty"`
 }
 
 type PromptRequest struct {

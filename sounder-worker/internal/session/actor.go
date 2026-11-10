@@ -40,8 +40,9 @@ type Actor struct {
 	ModelID string
 	CWD     string
 
-	createdAt time.Time
-	title     string
+	createdAt  time.Time
+	lastActive time.Time
+	title      string
 
 	guard    *policy.Guard
 	approver policy.Approver
@@ -112,6 +113,7 @@ func New(opts Options) (*Actor, error) {
 		ModelID:    opts.ModelID,
 		CWD:        opts.CWD,
 		createdAt:  time.Now(),
+		lastActive: time.Now(),
 		guard:      policy.NewGuard(opts.CWD, nil),
 		services:   services,
 		runtime:    rt,
@@ -318,14 +320,15 @@ func (a *Actor) View() protocol.SessionView {
 		}
 	}
 	return protocol.SessionView{
-		ID:        a.ID,
-		Model:     a.ModelID,
-		State:     state,
-		Pending:   pending,
-		PendingN:  pendingN,
-		Title:     a.title,
-		Workspace: a.CWD,
-		CreatedAt: a.createdAt.Format(time.RFC3339),
+		ID:           a.ID,
+		Model:        a.ModelID,
+		State:        state,
+		Pending:      pending,
+		PendingN:     pendingN,
+		Title:        a.title,
+		Workspace:    a.CWD,
+		CreatedAt:    a.createdAt.Format(time.RFC3339),
+		LastActiveAt: a.lastActive.Format(time.RFC3339),
 	}
 }
 
@@ -468,6 +471,9 @@ func (a *Actor) forward(ev agent.AgentEvent) {
 }
 
 func (a *Actor) emit(t string, payload map[string]any) {
+	a.mu.Lock()
+	a.lastActive = time.Now()
+	a.mu.Unlock()
 	select {
 	case <-a.done:
 		return

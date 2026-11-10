@@ -222,7 +222,18 @@
     background: var(--panel); display: flex; flex-direction: column; min-height: 0;
   }
   .ip-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .ip-rows { padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+  #infoRows { overflow: auto; padding: 6px 8px 10px; }
+  .ip-group { border-bottom: 1px solid var(--line); }
+  .ip-group:last-child { border-bottom: 0; }
+  .ip-group > summary {
+    cursor: pointer; list-style: none; padding: 8px 4px 6px;
+    font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .ip-group > summary::-webkit-details-marker { display: none; }
+  .ip-group > summary::before { content: "▾ "; color: var(--line-strong); }
+  .ip-group:not([open]) > summary::before { content: "▸ "; }
+  .ip-rows { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; }
   .ip-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; font-size: 12px; }
   .ip-row:hover { background: #15151a; }
   .ip-row .k { color: var(--muted2); width: 68px; flex: none; font-size: 11.5px; }
@@ -453,6 +464,22 @@
   }
   #userChip { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 9px; font-size: 12px; }
 
+  .sheet.queue { width: min(760px, 96vw); max-height: 88vh; display: flex; flex-direction: column; padding: 0; }
+  .queue-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .queue-head h3 { margin: 0 0 2px; font-size: 15px; }
+  .queue-head .sub { margin: 0; }
+  .queue-actions { display: flex; gap: 6px; }
+  #queueBody { padding: 10px 12px 16px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  .q-item-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #101014; }
+  .q-item-card.question { border-color: #2c4066; border-left: 2px solid var(--accent); background: #0f1626; }
+  .q-meta { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-bottom: 6px; }
+  .q-meta .tool { border-left: 0; padding: 0; background: none; color: var(--muted); }
+  .q-item-card .q-text { font-size: 12.5px; margin-bottom: 8px; }
+  .q-item-card pre { margin: 6px 0 10px; max-height: 180px; overflow: auto; font-size: 11px; background: #0b0b0f; border-radius: 6px; padding: 8px; }
+  .q-item-card .row { display: flex; gap: 6px; align-items: center; }
+  .q-item-card input { flex: 1; font-size: 12px; }
+  .q-jump { margin-left: auto; }
+
   #toast {
     position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 10px);
     z-index: 60; padding: 7px 13px; border-radius: 999px; font-size: 12px;
@@ -533,7 +560,7 @@
   .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-Tug8wVJD.js"></script>
+  <script type="module" crossorigin src="/assets/index-BgZVSMbv.js"></script>
 </head>
 <body>
 <div class="app">
@@ -693,6 +720,19 @@
     </div>
   </div>
 </div>
+<div class="modal" id="queueModal" hidden>
+  <div class="sheet queue">
+    <div class="queue-head">
+      <div><h3>待办</h3><p class="sub" id="queueSub">跨设备的审批与提问</p></div>
+      <div class="queue-actions">
+        <button class="sm" id="queueRefresh" type="button">刷新</button>
+        <button class="sm" id="queueClose" type="button">关闭</button>
+      </div>
+    </div>
+    <div id="queueBody"></div>
+  </div>
+</div>
+
 <div id="toast" role="status" aria-live="polite"></div>
 <div class="modal" id="accountModal" hidden>
   <div class="card">
