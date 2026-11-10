@@ -43,6 +43,7 @@ func main() {
 	addr := flag.String("addr", "0.0.0.0:8000", "监听地址")
 	gwURL := flag.String("gateway", "http://127.0.0.1:9090", "sounder-gateway 地址")
 	gwToken := flag.String("gateway-token", "", "访问 Gateway 的 token")
+	publicGateway := flag.String("public-gateway", env("SOUNDER_PUBLIC_GATEWAY", ""), "下发给客户端的网关地址（如 wss://gateway.example.com/v1/tunnel）")
 	token := flag.String("token", env("SOUNDER_TOKEN", ""), "控制端访问本服务的 token；为空则不校验")
 	storeKind := flag.String("store", "memory", "memory | postgres")
 	dsn := flag.String("dsn", "", "PostgreSQL DSN（-store=postgres 时必填）")
@@ -125,7 +126,7 @@ func main() {
 	}
 
 	gw := gateway.New(*gwURL, *gwToken)
-	srv := api.New(st, ast, authSvc, gw, *token)
+	srv := api.New(st, ast, authSvc, gw, *token, *publicGateway)
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
