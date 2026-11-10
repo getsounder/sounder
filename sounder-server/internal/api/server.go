@@ -59,6 +59,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/users", s.handleAdminUsers)
 	mux.HandleFunc("GET /v1/admin/devices", s.handleAdminDevices)
 	mux.HandleFunc("GET /v1/admin/sessions", s.handleAdminSessions)
+	mux.HandleFunc("PATCH /v1/admin/users/{id}", s.handleUpdateUser)
+	mux.HandleFunc("DELETE /v1/admin/users/{id}", s.handleDeleteUser)
+	mux.HandleFunc("GET /v1/admin/audit", s.handleAdminAudit)
 
 	mux.HandleFunc("GET /v1/quota", s.handleGetQuota)
 	mux.HandleFunc("PUT /v1/quota", s.handleSetQuota)

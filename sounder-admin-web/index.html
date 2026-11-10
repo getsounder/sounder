@@ -150,6 +150,7 @@
       <a href="#/devices" data-view="devices">设备</a>
       <a href="#/sessions" data-view="sessions">会话</a>
       <a href="#/workers" data-view="workers">Worker</a>
+      <a href="#/audit" data-view="audit">审计</a>
     </nav>
     <div class="side-foot mono" id="buildInfo">Sounder Admin</div>
   </aside>
@@ -288,7 +289,7 @@ $("logout").onclick = async () => {
 };
 
 // ---------- 路由 ----------
-const TITLES = { overview: "概览", users: "用户", devices: "设备", sessions: "会话", workers: "Worker" };
+const TITLES = { overview: "概览", users: "用户", devices: "设备", sessions: "会话", workers: "Worker", audit: "审计" };
 
 function route() {
   const v = (location.hash.replace("#/", "") || "overview").split("?")[0];
@@ -306,6 +307,7 @@ async function render() {
   if (state.view === "users") return renderUsers();
   if (state.view === "devices") return renderDevices();
   if (state.view === "sessions") return renderSessions();
+  if (state.view === "audit") return renderAudit();
   return renderWorkers();
 }
 
@@ -340,11 +342,16 @@ async function renderUsers() {
     <tr>
       <td><div>${esc(u.email || "—")}</div><div class="mono" style="color:var(--muted2);font-size:11px">${esc(u.id)}</div></td>
       <td>${esc(u.displayName || "—")}</td>
-      <td>${u.isAdmin ? '<span class="tag warn">admin</span>' : '<span class="tag">user</span>'}</td>
+      <td>${u.isAdmin ? '<span class="tag warn">admin</span>' : '<span class="tag">user</span>'} ${u.status === "disabled" ? '<span class="tag err">已禁用</span>' : ""}</td>
       <td>${u.deviceCount} <span style="color:var(--muted2)">/ 云端 ${u.cloudDevices}</span></td>
       <td class="mono">${u.quota ? `${u.quota.maxDevices} 台 · ${u.quota.deviceCpu}C/${Math.round(u.quota.deviceMemMb / 1024)}G/${u.quota.deviceDiskGb}G` : "—"}</td>
       <td>${(u.createdAt || "").slice(0, 10)}</td>
-      <td><button class="sm" data-quota="${esc(u.id)}">编辑配额</button></td>
+      <td class="row-actions">
+        <button class="sm" data-quota="${esc(u.id)}">配额</button>
+        <button class="sm" data-toggle-admin="${esc(u.id)}" data-admin="${u.isAdmin ? 1 : 0}">${u.isAdmin ? "取消管理员" : "设为管理员"}</button>
+        <button class="sm" data-toggle-status="${esc(u.id)}" data-status="${esc(u.status || "active")}">${u.status === "disabled" ? "启用" : "禁用"}</button>
+        <button class="sm danger" data-del-user="${esc(u.id)}">删除</button>
+      </td>
     </tr>`).join("");
   $("view").innerHTML = `
     <table>
@@ -352,9 +359,64 @@ async function renderUsers() {
       <tbody>${rows || '<tr><td colspan="7" class="empty">还没有用户</td></tr>'}</tbody>
     </table>
     <p class="mono" style="color:var(--muted2);font-size:11px;margin-top:10px">共 ${data.total} 个用户</p>`;
+  const findUser = (id) => (data.users || []).find((u) => u.id === id);
   for (const btn of $("view").querySelectorAll("[data-quota]")) {
-    btn.onclick = () => openQuota((data.users || []).find((u) => u.id === btn.dataset.quota));
+    btn.onclick = () => openQuota(findUser(btn.dataset.quota));
   }
+  for (const btn of $("view").querySelectorAll("[data-toggle-admin]")) {
+    btn.onclick = () => patchUser(btn.dataset.toggleAdmin, { isAdmin: btn.dataset.admin !== "1" }, btn);
+  }
+  for (const btn of $("view").querySelectorAll("[data-toggle-status]")) {
+    btn.onclick = () => patchUser(
+      btn.dataset.toggleStatus,
+      { status: btn.dataset.status === "disabled" ? "active" : "disabled" },
+      btn,
+    );
+  }
+  for (const btn of $("view").querySelectorAll("[data-del-user]")) {
+    btn.onclick = async () => {
+      if (!confirm("删除该用户？其会话、身份与设备绑定会一起清理。")) return;
+      btn.disabled = true;
+      try {
+        await api(`/v1/admin/users/${encodeURIComponent(btn.dataset.delUser)}`, { method: "DELETE" });
+        toast("用户已删除");
+        render();
+      } catch (e) {
+        toast(e.message || "删除失败");
+        btn.disabled = false;
+      }
+    };
+  }
+}
+
+async function patchUser(id, body, btn) {
+  btn.disabled = true;
+  try {
+    await api(`/v1/admin/users/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
+    toast("已更新");
+    render();
+  } catch (e) {
+    toast(e.message || "更新失败");
+    btn.disabled = false;
+  }
+}
+
+// ---------- 审计 ----------
+async function renderAudit() {
+  const data = await api("/v1/admin/audit?limit=200");
+  const rows = (data.events || []).map((e) => `
+    <tr>
+      <td class="mono">${(e.createdAt || "").slice(0, 19).replace("T", " ")}</td>
+      <td>${esc(e.userEmail || e.userId || "—")}</td>
+      <td><span class="tag">${esc(e.action)}</span></td>
+      <td class="mono">${esc(e.ip || "—")}</td>
+      <td class="mono" style="color:var(--muted2);font-size:11px">${esc(e.detail ? JSON.stringify(e.detail).slice(0, 120) : "")}</td>
+    </tr>`).join("");
+  $("view").innerHTML = `
+    <table>
+      <thead><tr><th>时间</th><th>用户</th><th>动作</th><th>IP</th><th>详情</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="5" class="empty">还没有审计记录</td></tr>'}</tbody>
+    </table>`;
 }
 
 function openQuota(user) {
