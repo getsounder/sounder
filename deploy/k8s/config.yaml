@@ -32,6 +32,7 @@ metadata:
 type: Opaque
 stringData:
   SOUNDER_TOKEN: "change-me-before-deploy"
+  SOUNDER_WORKER_SECRET: "change-me-before-deploy"
   POSTGRES_PASSWORD: "sounder"
   MINIO_ROOT_USER: "sounder"
   MINIO_ROOT_PASSWORD: "minioadmin"
