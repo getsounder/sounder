@@ -23,17 +23,24 @@ func main() {
 	model := flag.String("model", "minimax-cn/MiniMax-M3", "默认模型")
 	workspace := flag.String("workspace", "", "工作区目录（默认 home）")
 	apiBase := flag.String("api", "", "移动端：云端 sounder-server 地址，如 https://sounder.example.com")
-	apiToken := flag.String("token", "", "移动端：访问 token")
+	apiToken := flag.String("token", "", "访问 token：移动端直连控制面，或桌面端登记设备用")
+	server := flag.String("server", "", "可选：控制面地址；设置后本机设备会登记到服务端")
+	gateway := flag.String("gateway", "", "可选：网关隧道地址，如 ws://127.0.0.1:19090/v1/tunnel")
+	gatewayToken := flag.String("gateway-token", "", "可选：网关 Bearer token")
 	flag.Parse()
 
 	// 移动端不跑本地 Worker：iOS 禁止 fork 子进程，Android 也不适合常驻。
 	mobile := runtime.GOOS == "ios" || runtime.GOOS == "android"
 
 	svc := shell.New(shell.Config{
-		Mode:   *mode,
-		Image:  *image,
-		Binary: *workerBin,
-		Model:  *model,
+		Mode:         *mode,
+		Image:        *image,
+		Binary:       *workerBin,
+		Model:        *model,
+		Server:       *server,
+		AccessToken:  *apiToken,
+		Gateway:      *gateway,
+		GatewayToken: *gatewayToken,
 	})
 	authSvc := shell.NewAuth()
 

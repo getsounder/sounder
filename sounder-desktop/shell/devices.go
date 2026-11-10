@@ -1,14 +1,18 @@
 package shell
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -231,15 +235,18 @@ func (s *Service) startDeviceLocked(d *deviceRuntime) (Device, error) {
 	if err := os.MkdirAll(d.DataDir, 0o755); err != nil {
 		return Device{}, err
 	}
+	extra := s.workerExtraArgs(d)
+
 	var runner Runner
 	if d.Kind == "desktop-process" {
-		runner = &ProcessRunner{Binary: s.cfg.Binary, DataDir: d.DataDir, Model: s.cfg.Model}
+		runner = &ProcessRunner{Binary: s.cfg.Binary, DataDir: d.DataDir, Model: s.cfg.Model, Extra: extra}
 	} else {
 		runner = &ContainerRunner{
 			Image:     s.cfg.Image,
 			Container: d.Container,
 			DataDir:   d.DataDir,
 			Model:     s.cfg.Model,
+			Extra:     extra,
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -255,6 +262,9 @@ func (s *Service) startDeviceLocked(d *deviceRuntime) (Device, error) {
 	s.active = d.ID
 	s.ep = ep
 	s.ep.DeviceID = d.ID
+
+	// 登记到控制面；失败不影响本地使用，只是别的端暂时看不到这台设备。
+	go s.registerDevice(d.Device)
 	return d.Device, nil
 }
 
@@ -362,4 +372,55 @@ func (s *Service) containerEndpoint(name string) (string, bool) {
 		return "", false
 	}
 	return "http://127.0.0.1:" + addr[idx+1:], true
+}
+
+// workerExtraArgs 给 Worker 加上反向隧道与设备身份参数，让它对控制面可见。
+func (s *Service) workerExtraArgs(d *deviceRuntime) []string {
+	if s.cfg.Gateway == "" {
+		return nil
+	}
+	gw := s.cfg.Gateway
+	// 容器里的 127.0.0.1 是容器自己；桌面容器要访问宿主机上的网关。
+	if d.Kind != "desktop-process" {
+		gw = strings.ReplaceAll(gw, "127.0.0.1", "host.docker.internal")
+		gw = strings.ReplaceAll(gw, "localhost", "host.docker.internal")
+	}
+	kind := "desktop"
+	args := []string{"-gateway=" + gw, "-worker-id=" + d.ID, "-worker-kind=" + kind}
+	if s.cfg.GatewayToken != "" {
+		args = append(args, "-gateway-token="+s.cfg.GatewayToken)
+	}
+	return args
+}
+
+// registerDevice 把本机设备登记到控制面（需要 -server 与访问 token）。
+func (s *Service) registerDevice(d Device) {
+	server := strings.TrimRight(s.cfg.Server, "/")
+	if server == "" || s.cfg.AccessToken == "" {
+		return
+	}
+	body, _ := json.Marshal(map[string]any{
+		"kind":     d.Kind,
+		"workerId": d.ID,
+		"name":     d.Name,
+		"platform": runtime.GOOS,
+		"version":  "0.1.0",
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server+"/v1/devices", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.cfg.AccessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		fmt.Printf("register device %s failed: %s %s\n", d.ID, resp.Status, strings.TrimSpace(string(b)))
+	}
 }

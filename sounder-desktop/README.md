@@ -18,7 +18,27 @@ go run . -mode=process -worker=/path/to/sounder-worker -model=minimax-cn/MiniMax
 # container 模式（默认；需要本地有镜像）
 docker build -t ghcr.io/getsounder/sounder-worker:dev ../sounder-worker
 go run . -mode=container
+
+# 接入控制面：本机设备登记到服务端，Web/移动端也能看到并切换过来
+go run . -mode=container \
+  -server http://localhost:8000 \
+  -gateway ws://127.0.0.1:19090/v1/tunnel -gateway-token dev-token \
+  -token <用户访问 token>
 ```
+
+## 设备
+
+一个 Worker 运行环境就是一个设备。桌面端把设备列表存在
+`~/Library/Application Support/Sounder/devices.json`，每台设备对应一个独立容器和独立
+`/data`（会话历史互不干扰）：
+
+- 界面顶栏设备 chip 可以「新建设备」（再拉一个容器）、切换、改名、删除
+- 切换设备 = 让对应容器启动并重载到它的 endpoint（URL 带 `device=<id>`）
+- 首台设备复用旧版的单容器数据目录，升级不会丢会话
+- 传了 `-server` + `-token` 时，设备启动后会：
+  1. 以 `-gateway` 连上网关（容器内自动把 127.0.0.1 换成 host.docker.internal）
+  2. 用 `worker-id=<设备 id>`、`worker-kind=desktop` 注册隧道
+  3. 调 `POST /v1/devices` 登记，云端/移动端据此看到这台设备及其在线状态
 
 ## 结构
 
@@ -27,6 +47,7 @@ main.go              启动 Worker → 拼 URL → 开窗
 shell/shell.go       StartWorker / StopWorker / WorkerEndpoint
   ├─ ContainerRunner docker run -d -p 127.0.0.1::8080
   └─ ProcessRunner   exec worker，解析 READY 行
+shell/devices.go     多设备：devices.json + 每设备容器/数据目录 + 控制面登记
 cmd/shellcheck/      不开 GUI 验证 Worker 生命周期
 frontend/            Vite + 复用 sounder-web/index.html
 ```
