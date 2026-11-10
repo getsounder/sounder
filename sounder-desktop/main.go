@@ -51,8 +51,8 @@ func main() {
 			log.Printf("worker start failed: %v", err)
 		}
 		if ep.BaseURL != "" {
-			target = fmt.Sprintf("/?api=%s&token=%s&mode=%s",
-				url.QueryEscape(ep.BaseURL), url.QueryEscape(ep.Token), url.QueryEscape(ep.Mode))
+			target = fmt.Sprintf("/?api=%s&token=%s&mode=%s&device=%s",
+				url.QueryEscape(ep.BaseURL), url.QueryEscape(ep.Token), url.QueryEscape(ep.Mode), url.QueryEscape(ep.DeviceID))
 		}
 	}
 
