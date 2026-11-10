@@ -151,6 +151,7 @@
     display: flex; flex-direction: column; gap: 1px;
   }
   #sessions li {
+    position: relative;
     padding: 6px 8px; border-radius: 6px; cursor: pointer; color: var(--muted);
     display: flex; justify-content: space-between; gap: 8px; align-items: center;
     border: 1px solid transparent; transition: background .1s;
@@ -168,6 +169,12 @@
   .s-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .s-title { font-size: 12.5px; font-weight: 500; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .s-sub { font-size: 10.5px; color: var(--muted2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .s-badge {
+    flex: none; width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center;
+    font-size: 10px; font-weight: 700; color: #fff; background: var(--c, #4f7cff);
+  }
+  .s-right { display: flex; align-items: center; gap: 6px; flex: none; }
+  .s-time { font-size: 10.5px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   #sessions li .dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; flex: none; }
   #sessions li .dot.st-running { background: var(--accent); animation: dotPulse 1.1s ease-in-out infinite; }
   #sessions li .dot.st-approval { background: var(--warn); }
@@ -176,7 +183,12 @@
   #sessions li .dot.st-failed { background: var(--err); }
   #sessions li .dot.st-closed { background: var(--muted2); }
   @keyframes dotPulse { 50% { opacity: .35; } }
-  .s-acts { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity .1s; }
+  .s-acts {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    display: flex; gap: 2px; opacity: 0; transition: opacity .1s;
+    padding-left: 18px; border-radius: 6px;
+    background: linear-gradient(90deg, transparent, #1a1a21 34%);
+  }
   #sessions li:hover .s-acts, #sessions li.active .s-acts { opacity: 1; }
   .s-act {
     width: 20px; height: 20px; padding: 0; display: grid; place-items: center;
@@ -187,8 +199,29 @@
   .s-act:hover { background: #1c1c23; color: var(--fg); border-color: var(--line); }
   .s-act.del:hover { background: #f0647a1f; color: var(--err); border-color: #5c2630; }
 
-  .chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; position: relative; background: var(--bg); }
+  .chat { display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: 1fr auto; min-height: 0; position: relative; background: var(--bg); }
+  #chatBar {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
+    height: 38px; padding: 0 max(20px, calc((100% - 840px) / 2));
+    border-bottom: 1px solid var(--line); color: var(--muted);
+    font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .cb-project { color: var(--muted2); }
+  .cb-sep { color: var(--line-strong); }
+  .cb-title { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cb-spacer { flex: 1; }
+  #infoPanel {
+    grid-row: 2 / 4; grid-column: 2; width: 288px; border-left: 1px solid var(--line);
+    background: var(--panel); display: flex; flex-direction: column; min-height: 0;
+  }
+  .ip-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ip-rows { padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+  .ip-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; font-size: 12px; }
+  .ip-row:hover { background: #15151a; }
+  .ip-row .k { color: var(--muted2); width: 68px; flex: none; font-size: 11.5px; }
+  .ip-row .v { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
   #log {
+    grid-column: 1; grid-row: 2;
     overflow: auto; display: flex; flex-direction: column; gap: 14px;
     padding: 22px max(22px, calc((100% - 840px) / 2)) 26px;
   }
@@ -348,7 +381,7 @@
   .ask.resolved { opacity: .55; }
   .ask .q-answer { font-size: 12.5px; color: var(--muted); }
 
-  form.composer { padding: 10px max(18px, calc((100% - 840px) / 2)) 14px; border-top: 1px solid var(--line); background: var(--bg); }
+  form.composer { grid-column: 1; grid-row: 3; padding: 10px max(18px, calc((100% - 840px) / 2)) 14px; border-top: 1px solid var(--line); background: var(--bg); }
   .composer-box {
     display: flex; flex-direction: column; gap: 6px;
     background: #111115; border: 1px solid #24242b; border-radius: 12px;
@@ -373,7 +406,10 @@
   .model-chip:hover { color: var(--fg); border-color: var(--line-strong); }
   #stopBtn { background: #2a1418; border-color: #4d212a; color: #ffb3ba; }
   #stopBtn:hover:not(:disabled) { background: #331a1f; border-color: #5e2a34; color: #ffc9ce; }
-  #sendBtn { min-width: 58px; }
+  #sendBtn.send {
+    width: 30px; height: 30px; min-width: 30px; padding: 0; border-radius: 50%;
+    display: grid; place-items: center; font-size: 15px; line-height: 1;
+  }
   #findBar {
     position: absolute; top: 10px; right: max(24px, calc((100% - 840px) / 2)); z-index: 6;
     display: flex; align-items: center; gap: 6px;
@@ -453,6 +489,8 @@
     body.menu-open #scrim { display: block; position: fixed; inset: 46px 0 0; z-index: 10; background: #0007; }
     #setup { padding: 8px 10px; }
     #log { padding: 16px 14px 20px; }
+    #chatBar { padding: 0 10px; }
+    #infoPanel { position: fixed; right: 0; top: 46px; bottom: 0; width: min(310px, 88vw); z-index: 30; box-shadow: -20px 0 50px #000a; }
     form.composer { padding: 10px 10px 12px; }
     .composer-hint { display: none; }
     .composer-bar { justify-content: flex-end; }
@@ -474,7 +512,7 @@
   .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-D4B5ooP8.js"></script>
+  <script type="module" crossorigin src="/assets/index-Xlrz7C2P.js"></script>
 </head>
 <body>
 <div class="app">
@@ -512,6 +550,13 @@
       <ul id="sessions"></ul>
     </aside>
     <section class="chat">
+      <div id="chatBar">
+        <span class="cb-project" id="cbProject">本机</span>
+        <span class="cb-sep">/</span>
+        <span class="cb-title" id="cbTitle">未命名会话</span>
+        <span class="cb-spacer"></span>
+        <button id="infoBtn" class="icon-btn" type="button" title="会话信息（⌘I）" aria-label="会话信息">ⓘ</button>
+      </div>
       <div id="log">
         <div class="empty-state">
           <div class="empty-logo">S</div>
@@ -535,16 +580,20 @@
         <div class="composer-box">
           <textarea id="prompt" rows="1" placeholder="描述你要 Agent 做的事…" disabled></textarea>
           <div class="composer-bar">
-            <button id="modelChip" class="model-chip" type="button" title="默认模型（点击修改）">默认模型</button>
-            <button id="exportBtn" class="model-chip" type="button" title="导出为 Markdown">导出</button>
             <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
             <div class="composer-actions">
+              <button id="modelChip" class="model-chip" type="button" title="默认模型（点击修改）">默认模型</button>
+              <button id="exportBtn" class="icon-btn" type="button" title="导出为 Markdown" aria-label="导出">⇩</button>
               <button id="stopBtn" type="button" hidden>停止</button>
-              <button class="primary" id="sendBtn" disabled>发送</button>
+              <button class="primary send" id="sendBtn" disabled title="发送" aria-label="发送">↑</button>
             </div>
           </div>
         </div>
       </form>
+      <aside id="infoPanel" hidden>
+        <div class="ip-head"><span>会话信息</span><button class="icon-btn" id="infoClose" type="button" aria-label="关闭">×</button></div>
+        <div class="ip-rows" id="infoRows"></div>
+      </aside>
     </section>
   </main>
 </div>
