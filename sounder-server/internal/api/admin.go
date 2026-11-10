@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -263,4 +264,26 @@ func (s *Server) handleAdminAudit(w http.ResponseWriter, r *http.Request) {
 		out = append(out, view{AuditEvent: e, UserEmail: emails[e.UserID]})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": out})
+}
+
+// handleRenameSession 把改名请求转发给会话所在的 Worker。
+func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
+	sess, err := s.ownedSession(r, r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "session not found")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<10))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "read body: "+err.Error())
+		return
+	}
+	status, out, err := s.gw.RPC(r.Context(), sess.WorkerID, http.MethodPut, "/v1/sessions/"+sess.ID+"/title", json.RawMessage(body))
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(out)
 }

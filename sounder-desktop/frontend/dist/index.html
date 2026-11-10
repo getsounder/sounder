@@ -172,14 +172,16 @@
   #sessions li .dot.running { background: var(--warn); }
   #sessions li .dot.idle { background: #3ecf8e80; }
   #sessions li .dot.failed, #sessions li .dot.closed { background: var(--err); }
-  .s-del {
-    flex: none; width: 20px; height: 20px; padding: 0; display: grid; place-items: center;
+  .s-acts { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity .1s; }
+  #sessions li:hover .s-acts, #sessions li.active .s-acts { opacity: 1; }
+  .s-act {
+    width: 20px; height: 20px; padding: 0; display: grid; place-items: center;
     border-radius: 5px; border: 1px solid transparent; background: transparent;
-    color: var(--muted2); font-size: 14px; line-height: 1; opacity: 0;
-    transition: opacity .1s, color .1s, background .1s;
+    color: var(--muted2); font-size: 13px; line-height: 1;
+    transition: color .1s, background .1s;
   }
-  #sessions li:hover .s-del, #sessions li.active .s-del { opacity: 1; }
-  .s-del:hover { background: #f0647a1f; color: var(--err); border-color: #5c2630; }
+  .s-act:hover { background: #1c1c23; color: var(--fg); border-color: var(--line); }
+  .s-act.del:hover { background: #f0647a1f; color: var(--err); border-color: #5c2630; }
 
   .chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; position: relative; background: var(--bg); }
   #log {
@@ -372,7 +374,7 @@
     .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-DD8Pt2i4.js"></script>
+  <script type="module" crossorigin src="/assets/index-C48ByeYD.js"></script>
 </head>
 <body>
 <div class="app">

@@ -172,14 +172,16 @@
   #sessions li .dot.running { background: var(--warn); }
   #sessions li .dot.idle { background: #3ecf8e80; }
   #sessions li .dot.failed, #sessions li .dot.closed { background: var(--err); }
-  .s-del {
-    flex: none; width: 20px; height: 20px; padding: 0; display: grid; place-items: center;
+  .s-acts { display: flex; gap: 2px; flex: none; opacity: 0; transition: opacity .1s; }
+  #sessions li:hover .s-acts, #sessions li.active .s-acts { opacity: 1; }
+  .s-act {
+    width: 20px; height: 20px; padding: 0; display: grid; place-items: center;
     border-radius: 5px; border: 1px solid transparent; background: transparent;
-    color: var(--muted2); font-size: 14px; line-height: 1; opacity: 0;
-    transition: opacity .1s, color .1s, background .1s;
+    color: var(--muted2); font-size: 13px; line-height: 1;
+    transition: color .1s, background .1s;
   }
-  #sessions li:hover .s-del, #sessions li.active .s-del { opacity: 1; }
-  .s-del:hover { background: #f0647a1f; color: var(--err); border-color: #5c2630; }
+  .s-act:hover { background: #1c1c23; color: var(--fg); border-color: var(--line); }
+  .s-act.del:hover { background: #f0647a1f; color: var(--err); border-color: #5c2630; }
 
   .chat { display: grid; grid-template-rows: 1fr auto; min-height: 0; position: relative; background: var(--bg); }
   #log {
@@ -1290,6 +1292,7 @@ const STATE_LABELS = { running: "运行中", idle: "空闲", failed: "失败" };
 
 // 会话标题来自第一条用户消息，存在本地；Worker 目前只返回会话 ID。
 const TITLES_KEY = "sounder.titles";
+const PINS_KEY = "sounder.pins";
 const LAST_SESSION_KEY = "sounder.lastSession";
 
 function allTitles() {
@@ -1364,20 +1367,18 @@ function renderSessions() {
     return;
   }
 
-  const now = new Date();
-  let group = "";
-  for (const s of list) {
-    // 搜索时不再分组，结果平铺更直观
-    if (!q) {
-      const g = groupLabel(s.createdAt, now);
-      if (g !== group) {
-        group = g;
-        const label = document.createElement("li");
-        label.className = "group-label";
-        label.textContent = g;
-        ul.appendChild(label);
-      }
-    }
+  const pins = allPins();
+  const pinned = list.filter((s) => pins.includes(s.id));
+  const rest = list.filter((s) => !pins.includes(s.id));
+
+  const addGroupLabel = (text) => {
+    const label = document.createElement("li");
+    label.className = "group-label";
+    label.textContent = text;
+    ul.appendChild(label);
+  };
+
+  const addItem = (s) => {
     const li = document.createElement("li");
     li.className = state.current && state.current.id === s.id ? "active" : "";
     const title = sessionTitle(s);
@@ -1385,15 +1386,89 @@ function renderSessions() {
     li.innerHTML = `<span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${esc(sub || s.model || "本地会话")}</span></span><i class="dot ${esc(s.state || "")}"></i>`;
     li.title = [s.id, s.model, s.workspace].filter(Boolean).join("\n");
     li.onclick = () => { setMenu(false); selectSession(s); };
+
+    const acts = document.createElement("span");
+    acts.className = "s-acts";
+    const pin = document.createElement("button");
+    pin.type = "button";
+    pin.className = "s-act";
+    pin.title = pins.includes(s.id) ? "取消置顶" : "置顶";
+    pin.setAttribute("aria-label", pin.title);
+    pin.textContent = pins.includes(s.id) ? "★" : "☆";
+    pin.onclick = (e) => { e.stopPropagation(); togglePin(s); };
+
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.className = "s-act";
+    rename.title = "重命名";
+    rename.setAttribute("aria-label", "重命名");
+    rename.textContent = "✎";
+    rename.onclick = (e) => { e.stopPropagation(); renameSession(s); };
+
     const del = document.createElement("button");
     del.type = "button";
-    del.className = "s-del";
+    del.className = "s-act del";
     del.title = "删除会话";
     del.setAttribute("aria-label", "删除会话");
     del.textContent = "×";
     del.onclick = (e) => { e.stopPropagation(); deleteSession(s); };
-    li.appendChild(del);
+
+    acts.append(pin, rename, del);
+    li.appendChild(acts);
     ul.appendChild(li);
+  };
+
+  if (pinned.length) {
+    addGroupLabel("置顶");
+    for (const s of pinned) addItem(s);
+  }
+
+  const now = new Date();
+  let group = "";
+  for (const s of rest) {
+    // 搜索时不再分组，结果平铺更直观
+    if (!q) {
+      const g = groupLabel(s.createdAt, now);
+      if (g !== group) {
+        group = g;
+        addGroupLabel(g);
+      }
+    }
+    addItem(s);
+  }
+}
+
+// 置顶只影响本机展示顺序
+function allPins() {
+  try { return JSON.parse(localStorage.getItem(PINS_KEY) || "[]"); } catch (_) { return []; }
+}
+
+function togglePin(s) {
+  const pins = allPins();
+  const i = pins.indexOf(s.id);
+  if (i >= 0) pins.splice(i, 1);
+  else pins.unshift(s.id);
+  try { localStorage.setItem(PINS_KEY, JSON.stringify(pins)); } catch (_) {}
+  renderSessions();
+}
+
+async function renameSession(s) {
+  const current = sessionTitle(s);
+  const name = prompt("重命名会话", current);
+  if (!name || name.trim() === "" || name.trim() === current) return;
+  try {
+    await api(`/v1/sessions/${encodeURIComponent(s.id)}/title`, {
+      method: "PUT",
+      body: JSON.stringify({ title: name.trim() }),
+    });
+    const titles = allTitles();
+    titles[s.id] = name.trim();
+    try { localStorage.setItem(TITLES_KEY, JSON.stringify(titles)); } catch (_) {}
+    if (state.current && state.current.id === s.id) state.current.title = name.trim();
+    renderSessions();
+    toast("已重命名");
+  } catch (e) {
+    toast(e.message || "重命名失败");
   }
 }
 
@@ -1407,6 +1482,7 @@ async function deleteSession(s) {
   }
   state.sessions = state.sessions.filter((x) => x.id !== s.id);
   forgetTitle(s.id);
+  try { localStorage.setItem(PINS_KEY, JSON.stringify(allPins().filter((id) => id !== s.id))); } catch (_) {}
   if (wasCurrent) {
     if (state.abort) { state.abort.abort(); state.abort = null; }
     state.current = null;

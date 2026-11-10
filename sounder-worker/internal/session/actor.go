@@ -56,9 +56,9 @@ type Actor struct {
 	historyMax int
 	subMu      sync.Mutex
 
-	done        chan struct{}
-	seq         atomic.Int64
-	quota       Quota
+	done  chan struct{}
+	seq   atomic.Int64
+	quota Quota
 	sink  func(protocol.Envelope)
 
 	mu      sync.Mutex
@@ -294,6 +294,17 @@ func (a *Actor) View() protocol.SessionView {
 		Workspace: a.CWD,
 		CreatedAt: a.createdAt.Format(time.RFC3339),
 	}
+}
+
+// RenameTitle 允许显式改名（覆盖自动生成的标题）。
+func (a *Actor) RenameTitle(title string) {
+	t := titleFromText(title)
+	if t == "" {
+		return
+	}
+	a.mu.Lock()
+	a.title = t
+	a.mu.Unlock()
 }
 
 // SetTitle 只在标题为空时生效，用于恢复历史会话时补齐标题。

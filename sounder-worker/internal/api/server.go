@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/getsounder/sounder-worker/internal/approval"
@@ -35,6 +36,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sessions/{id}", s.handleDelete)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompts", s.handlePrompt)
 	mux.HandleFunc("POST /v1/sessions/{id}/cancel", s.handleCancel)
+	mux.HandleFunc("PUT /v1/sessions/{id}/title", s.handleRenameTitle)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/sessions/{id}/history", s.handleHistory)
 	mux.HandleFunc("GET /v1/approvals", s.handleApprovalList)
@@ -283,4 +285,26 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+// handleRenameTitle 显式改会话标题（控制端侧栏重命名）。
+func (s *Server) handleRenameTitle(w http.ResponseWriter, r *http.Request) {
+	actor, ok := s.mgr.Get(r.PathValue("id"))
+	if !ok {
+		writeErr(w, http.StatusNotFound, "session not found")
+		return
+	}
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		writeErr(w, http.StatusBadRequest, "title required")
+		return
+	}
+	actor.RenameTitle(req.Title)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "title": actor.View().Title})
 }
