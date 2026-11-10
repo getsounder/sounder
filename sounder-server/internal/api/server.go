@@ -21,24 +21,25 @@ import (
 )
 
 type Server struct {
-	store         store.Store
-	authStore     store.AuthStore
-	auth          *auth.Service
-	gw            *gateway.Client
-	token         string
-	publicGateway string // 客户端连网关用的 ws(s) 地址，通过 /v1/meta 下发
-	workerSecret  string // 给设备签发 worker token 的 HMAC 密钥（与网关一致）
-	prov          provision.Provisioner
+	store                   store.Store
+	authStore               store.AuthStore
+	auth                    *auth.Service
+	gw                      *gateway.Client
+	token                   string
+	publicGateway           string // 客户端连网关用的 ws(s) 地址，通过 /v1/meta 下发
+	workerSecret            string // 给设备签发 worker token 的 HMAC 密钥（与网关一致）
+	prov                    provision.Provisioner
+	provisionerControlPlane string // Worker 换短期令牌用的控制面地址
 }
 
-func New(st store.Store, authStore store.AuthStore, authSvc *auth.Service, gw *gateway.Client, token, publicGateway, workerSecret string, prov provision.Provisioner) *Server {
+func New(st store.Store, authStore store.AuthStore, authSvc *auth.Service, gw *gateway.Client, token, publicGateway, workerSecret string, prov provision.Provisioner, provisionerControlPlane string) *Server {
 	if prov == nil {
 		prov = provision.Disabled{}
 	}
 	return &Server{
 		store: st, authStore: authStore, auth: authSvc, gw: gw,
 		token: token, publicGateway: publicGateway, workerSecret: workerSecret,
-		prov: prov,
+		prov: prov, provisionerControlPlane: provisionerControlPlane,
 	}
 }
 
@@ -51,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /v1/devices/{id}", s.handleRenameDevice)
 	mux.HandleFunc("DELETE /v1/devices/{id}", s.handleDeleteDevice)
 	mux.HandleFunc("POST /v1/worker-tokens", s.handleWorkerToken)
+	mux.HandleFunc("POST /v1/worker-tokens/refresh", s.handleRefreshWorkerToken)
 	mux.HandleFunc("POST /v1/devices/{id}/start", s.handleStartDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/stop", s.handleStopDevice)
 	mux.HandleFunc("GET /v1/quota", s.handleGetQuota)

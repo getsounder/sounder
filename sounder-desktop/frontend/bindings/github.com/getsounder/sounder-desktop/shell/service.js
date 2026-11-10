@@ -93,6 +93,22 @@ export function SetDeviceTunnel(id, gateway, token) {
 }
 
 /**
+ * SetDeviceTunnelWithKey 进一步支持"设备密钥 + 控制面"模式：
+ * Worker 自己用长期密钥换短期网关令牌，容器启动参数里不再放长期凭据。
+ * @param {string} id
+ * @param {string} gateway
+ * @param {string} token
+ * @param {string} controlPlane
+ * @param {string} deviceKey
+ * @returns {$CancellablePromise<$models.Device>}
+ */
+export function SetDeviceTunnelWithKey(id, gateway, token, controlPlane, deviceKey) {
+    return $Call.ByID(1549636581, id, gateway, token, controlPlane, deviceKey).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
+}
+
+/**
  * StartDevice 启动指定设备；已经运行时直接返回其地址。
  * @param {string} id
  * @returns {$CancellablePromise<$models.Device>}

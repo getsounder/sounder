@@ -17,6 +17,7 @@ type WorkerToken struct {
 	WorkerID string `json:"wid"`
 	UserID   string `json:"uid,omitempty"`
 	Kind     string `json:"kind,omitempty"`
+	Use      string `json:"use,omitempty"`
 	Expiry   int64  `json:"exp"`
 }
 

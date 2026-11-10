@@ -90,7 +90,7 @@ func (s *Server) handleTunnel(w http.ResponseWriter, r *http.Request) {
 	var device auth.WorkerToken
 	deviceOK := false
 	if !admin && s.workerSecret != "" && token != "" {
-		if dt, err := auth.VerifyWorkerToken(s.workerSecret, token); err == nil {
+		if dt, err := auth.VerifyWorkerToken(s.workerSecret, token); err == nil && dt.Use != "device-key" {
 			device, deviceOK = dt, true
 		}
 	}

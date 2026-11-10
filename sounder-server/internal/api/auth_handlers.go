@@ -65,7 +65,8 @@ func publicAuthPath(path string) bool {
 	case "/healthz", "/readyz", "/v1/meta",
 		"/v1/auth/providers", "/v1/auth/register", "/v1/auth/login",
 		"/v1/auth/password/forgot", "/v1/auth/password/reset",
-		"/v1/auth/email/verify", "/v1/auth/native/exchange":
+		"/v1/auth/email/verify", "/v1/auth/native/exchange",
+		"/v1/worker-tokens/refresh":
 		return true
 	}
 	// OAuth 的 start/callback/device 都是浏览器直达；link 需要已登录。

@@ -24,16 +24,18 @@ func (f Form) Normalize() Form {
 
 // Request 描述要创建的一台云端设备。
 type Request struct {
-	DeviceID    string // 同时作为 worker id
-	UserID      string
-	WorkerToken string // 网关凭据（HMAC 签发）
-	Name        string
-	Form        Form
-	Model       string
-	CPU         int // vCPU
-	MemMB       int
-	DiskGB      int
-	Env         map[string]string // 透传给 Worker 的环境变量（模型 key 等）
+	DeviceID     string // 同时作为 worker id
+	UserID       string
+	WorkerToken  string // 网关凭据（HMAC 签发，短期）
+	DeviceKey    string // 长期设备密钥：Worker 用它自行换短期网关令牌
+	ControlPlane string // 控制面地址（换令牌用）
+	Name         string
+	Form         Form
+	Model        string
+	CPU          int // vCPU
+	MemMB        int
+	DiskGB       int
+	Env          map[string]string // 透传给 Worker 的环境变量（模型 key 等）
 }
 
 // Result 是创建结果。

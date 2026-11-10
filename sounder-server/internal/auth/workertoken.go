@@ -17,7 +17,9 @@ type WorkerToken struct {
 	WorkerID string `json:"wid"`
 	UserID   string `json:"uid,omitempty"`
 	Kind     string `json:"kind,omitempty"`
-	Expiry   int64  `json:"exp"`
+	// Use 区分用途：gateway（连网关，短期）| device-key（换短期令牌用，长期）
+	Use    string `json:"use,omitempty"`
+	Expiry int64  `json:"exp"`
 }
 
 const workerTokenPrefix = "wt_"

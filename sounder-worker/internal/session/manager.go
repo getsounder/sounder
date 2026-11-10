@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/getsounder/sounder-worker/internal/protocol"
 	"github.com/getsounder/sounder-worker/internal/policy"
+	"github.com/getsounder/sounder-worker/internal/protocol"
 )
 
 var ErrFull = errors.New("worker at capacity")

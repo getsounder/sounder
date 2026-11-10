@@ -791,18 +791,31 @@ async function publishLocalDevices() {
       } catch (_) {
         /* 单台失败不影响其它设备 */
       }
-      // 用这台设备专属的 worker token 重连隧道，不再共享管理 token。
+      // 优先用长期设备密钥：Worker 自己换短期网关令牌，容器里不放长期凭据。
       if (gateway) {
         try {
-          const tk = await api("/v1/worker-tokens", {
+          const key = await api("/v1/worker-tokens", {
             method: "POST",
-            body: JSON.stringify({ workerId: d.id, kind: d.kind }),
+            body: JSON.stringify({ workerId: d.id, kind: d.kind, use: "device-key" }),
           });
-          if (tk && tk.token) {
-            await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.SetDeviceTunnel", d.id, gateway, tk.token);
+          if (key && key.token) {
+            await wailsCall(
+              "github.com/getsounder/sounder-desktop/shell.Service.SetDeviceTunnelWithKey",
+              d.id, gateway, "", state.apiBase, key.token,
+            );
           }
         } catch (_) {
-          /* 拿不到 token 就继续用启动参数里的凭据 */
+          try {
+            const tk = await api("/v1/worker-tokens", {
+              method: "POST",
+              body: JSON.stringify({ workerId: d.id, kind: d.kind }),
+            });
+            if (tk && tk.token) {
+              await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.SetDeviceTunnel", d.id, gateway, tk.token);
+            }
+          } catch (_) {
+            /* 拿不到凭据就继续用启动参数里的 */
+          }
         }
       }
     }

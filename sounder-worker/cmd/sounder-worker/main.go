@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -9,11 +10,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -36,6 +40,8 @@ func main() {
 	gatewayToken := flag.String("gateway-token", "", "连接 Gateway 的 Bearer token")
 	workerID := flag.String("worker-id", "", "Worker ID；默认取 hostname")
 	workerKind := flag.String("worker-kind", "cloud", "desktop | cloud")
+	controlPlane := flag.String("control-plane", "", "控制面地址；配合 -device-key 换取短期网关令牌")
+	deviceKey := flag.String("device-key", "", "设备密钥（长期），用于定期换取短期网关令牌")
 	flag.Parse()
 
 	if *token == "" {
@@ -73,6 +79,45 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// 设备密钥 > 短期令牌：启动时先换一次，之后定期续期。
+	var tokenMu sync.RWMutex
+	gwToken := *gatewayToken
+	setToken := func(t string) {
+		tokenMu.Lock()
+		gwToken = t
+		tokenMu.Unlock()
+	}
+	getToken := func() string {
+		tokenMu.RLock()
+		defer tokenMu.RUnlock()
+		return gwToken
+	}
+	if *deviceKey != "" && *controlPlane != "" {
+		if tok, exp, err := refreshWorkerToken(ctx, *controlPlane, *deviceKey); err != nil {
+			log.Printf("device key exchange failed: %v (fallback to configured token)", err)
+		} else {
+			setToken(tok)
+			log.Printf("gateway token refreshed, expires %s", exp)
+		}
+		go func() {
+			t := time.NewTicker(20 * time.Minute)
+			defer t.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					if tok, exp, err := refreshWorkerToken(ctx, *controlPlane, *deviceKey); err != nil {
+						log.Printf("refresh gateway token: %v", err)
+					} else {
+						setToken(tok)
+						log.Printf("gateway token refreshed, expires %s", exp)
+					}
+				}
+			}
+		}()
+	}
+
 	if *gateway != "" {
 		id := *workerID
 		if id == "" {
@@ -83,9 +128,10 @@ func main() {
 			}
 		}
 		tc := tunnel.New(
-			*gateway, *gatewayToken, *token, id, *workerKind, "0.1.0",
+			*gateway, getToken(), *token, id, *workerKind, "0.1.0",
 			"http://"+ln.Addr().String(), *max, m.Len,
 		)
+		tc.SetTokenFunc(getToken)
 		m.SetEventSink(tc.Publish)
 		go tc.Run(ctx)
 		log.Printf("tunnel enabled: %s as %s (%s)", *gateway, id, *workerKind)
@@ -139,4 +185,34 @@ func randomToken() string {
 		log.Fatalf("rand: %v", err)
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// refreshWorkerToken 用设备密钥换一张短期网关令牌。
+func refreshWorkerToken(ctx context.Context, server, deviceKey string) (string, time.Time, error) {
+	body, _ := json.Marshal(map[string]any{})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimRight(server, "/")+"/v1/worker-tokens/refresh", bytes.NewReader(body))
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+deviceKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", time.Time{}, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(b)))
+	}
+	var out struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expiresAt"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", time.Time{}, err
+	}
+	exp, _ := time.Parse(time.RFC3339, out.ExpiresAt)
+	return out.Token, exp, nil
 }
