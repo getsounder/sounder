@@ -299,6 +299,14 @@
   .error-title { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ff9aa5; margin-bottom: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .error-body { font-size: 12.5px; color: #ffd7db; }
   .error .retry { margin-top: 10px; font-size: 11.5px; padding: 4px 10px; }
+  .badge-pill {
+    min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+    background: #3a2a10; border: 1px solid #5c4a20; color: var(--warn);
+    font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .badge-pill:hover { background: #4a3514; border-color: #7a6229; }
+
   .approval {
     align-self: stretch; padding: 12px 14px; border-radius: 8px;
     background: #1d1810; border: 1px solid #453618; border-left: 2px solid var(--warn);
@@ -307,6 +315,28 @@
   .approval pre { margin: 8px 0 12px; padding: 9px; background: #12100b; border-radius: 6px; overflow: auto; font-size: 11px; color: #d3c5a3; }
   .approval .row { display: flex; gap: 8px; }
   .approval .row button { min-width: 76px; font-size: 12px; }
+  .approval .head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  .approval .head h4 { margin: 0; }
+  .lvl { font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .lvl.l1 { color: #ffd7a6; border-color: #5c4a20; background: #221c10; }
+  .lvl.l2 { color: #ffc2c8; border-color: #5c2630; background: #211012; }
+  .lvl.l3 { color: #d9c2ff; border-color: #4b3a6b; background: #191225; }
+  .approval details { margin: 8px 0 12px; }
+  .approval details summary { font-size: 11.5px; color: var(--muted2); cursor: pointer; }
+  .approval details pre { margin: 6px 0 0; max-height: 220px; }
+
+  .ask {
+    align-self: stretch; padding: 12px 14px; border-radius: 10px;
+    background: #111a2a; border: 1px solid #2c4066; border-left: 2px solid var(--accent);
+  }
+  .ask .q-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-bottom: 4px; }
+  .ask .q-text { font-size: 13px; margin-bottom: 10px; }
+  .ask .q-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .ask .q-opts button { font-size: 12px; padding: 5px 10px; border-radius: 7px; }
+  .ask .q-reply { display: flex; gap: 8px; }
+  .ask .q-reply input { flex: 1; font-size: 12.5px; }
+  .ask.resolved { opacity: .55; }
+  .ask .q-answer { font-size: 12.5px; color: var(--muted); }
 
   form.composer { padding: 10px max(18px, calc((100% - 840px) / 2)) 14px; border-top: 1px solid var(--line); background: var(--bg); }
   .composer-box {
@@ -425,7 +455,7 @@
   .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-1VGdt4h3.js"></script>
+  <script type="module" crossorigin src="/assets/index-9lLrBuuf.js"></script>
 </head>
 <body>
 <div class="app">
@@ -435,6 +465,7 @@
     <button id="deviceChip" class="device-chip" hidden title="当前设备（点击切换）"><i id="deviceDot"></i><span class="d-name" id="deviceName">设备</span></button>
     <button id="wsChip" class="workspace-chip" hidden title="当前会话的工作区（点击复制）"></button>
     <button id="userChip" hidden title="账号">账号</button>
+    <button id="approvalBadge" class="badge-pill" hidden title="待处理的审批/提问">0</button>
     <button id="findBtn" class="icon-btn" title="在会话内搜索（⌘F）" aria-label="搜索">⌕</button>
     <button id="settingsBtn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
     <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>

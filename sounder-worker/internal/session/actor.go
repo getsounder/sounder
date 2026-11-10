@@ -43,7 +43,8 @@ type Actor struct {
 	createdAt time.Time
 	title     string
 
-	guard *policy.Guard
+	guard    *policy.Guard
+	approver policy.Approver
 
 	services *coding.AgentSessionServices
 	runtime  *coding.Runtime
@@ -156,6 +157,18 @@ func New(opts Options) (*Actor, error) {
 
 // beforeToolCall 是 PiG 的官方钩子：在参数校验之后、工具执行之前运行，可阻塞。
 func (a *Actor) beforeToolCall(ctx context.Context, _ string, name string, args json.RawMessage) agent.ToolCallHookResult {
+	// 「向用户提问」：Agent 执行 `sounder-ask "问题" [--options "A|B"]` 时，
+	// 不真的跑 shell，而是把问题抛给控制端，回答作为工具结果返回给模型。
+	if name == "bash" {
+		if question, options, ok := parseAskUser(args); ok {
+			answer, err := a.askUser(ctx, question, options)
+			if err != nil {
+				log.Printf("session %s ask_user failed: %v", a.ID, err)
+				return agent.ToolCallHookResult{Block: true, Reason: "用户没有回答：" + err.Error()}
+			}
+			return agent.ToolCallHookResult{Block: true, Reason: "用户回答：" + answer}
+		}
+	}
 	if err := a.CheckTool(ctx, name, args); err != nil {
 		log.Printf("session %s blocked tool %s: %v", a.ID, name, err)
 		return agent.ToolCallHookResult{Block: true, Reason: err.Error()}
@@ -168,6 +181,9 @@ func (a *Actor) beforeToolCall(ctx context.Context, _ string, name string, args 
 //
 //	if err := actor.CheckTool(ctx, toolName, rawArgs); err != nil { return denied }
 func (a *Actor) SetApprover(x policy.Approver) {
+	a.mu.Lock()
+	a.approver = x
+	a.mu.Unlock()
 	if a.guard != nil {
 		a.guard.SetApprover(x)
 	}
@@ -610,4 +626,77 @@ func toolOutput(r agent.AgentToolResult) string {
 		s = s[:2048] + "…(truncated)"
 	}
 	return s
+}
+
+// askUser 通过审批通道向用户提问，阻塞直到用户回答或超时。
+func (a *Actor) askUser(ctx context.Context, question string, options []string) (string, error) {
+	a.mu.Lock()
+	approver := a.approver
+	a.mu.Unlock()
+	if approver == nil {
+		return "", fmt.Errorf("当前没有连接控制端，无法提问")
+	}
+	args := map[string]any{}
+	if len(options) > 0 {
+		args["options"] = options
+	}
+	req := approval.Request{
+		ID:        newID(),
+		SessionID: a.ID,
+		Tool:      "ask_user",
+		Level:     "question",
+		Reason:    question,
+		Args:      args,
+	}
+	a.emit(protocol.TypeApprovalAsk, map[string]any{
+		"approvalId": req.ID,
+		"tool":       req.Tool,
+		"level":      req.Level,
+		"reason":     req.Reason,
+		"args":       req.Args,
+	})
+	res, err := approver.Ask(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	if !res.Allow {
+		return "", fmt.Errorf("用户取消了回答")
+	}
+	answer := strings.TrimSpace(res.Reason)
+	if answer == "" {
+		return "", fmt.Errorf("用户没有给出内容")
+	}
+	return answer, nil
+}
+
+// parseAskUser 识别 `sounder-ask ...` 这种约定写法。
+func parseAskUser(args json.RawMessage) (string, []string, bool) {
+	var p struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return "", nil, false
+	}
+	cmd := strings.TrimSpace(p.Command)
+	if !strings.HasPrefix(cmd, "sounder-ask") {
+		return "", nil, false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(cmd, "sounder-ask"))
+
+	var options []string
+	if idx := strings.Index(rest, "--options"); idx >= 0 {
+		raw := strings.TrimSpace(rest[idx+len("--options"):])
+		raw = strings.Trim(raw, "\"'")
+		for _, part := range strings.Split(raw, "|") {
+			if opt := strings.TrimSpace(strings.Trim(part, "\"'")); opt != "" {
+				options = append(options, opt)
+			}
+		}
+		rest = strings.TrimSpace(rest[:idx])
+	}
+	question := strings.Trim(rest, "\"'`")
+	if question == "" {
+		return "", nil, false
+	}
+	return question, options, true
 }
