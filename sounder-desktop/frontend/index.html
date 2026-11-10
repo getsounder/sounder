@@ -332,6 +332,7 @@
   .card h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
   .card p.sub { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
   .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .field label { font-size: 11.5px; color: var(--muted); }
   .field input { width: 100%; }
   .hint { font-size: 12px; color: var(--muted); }
@@ -495,6 +496,20 @@
       <label>云端设备配额</label>
       <div class="hint" id="setQuota">—</div>
     </div>
+    <div id="adminQuota" hidden>
+      <div class="sep">管理员</div>
+      <div class="field">
+        <label>用户邮箱</label>
+        <input id="quotaEmail" placeholder="user@example.com" autocapitalize="off" autocorrect="off">
+      </div>
+      <div class="admin-grid">
+        <div class="field"><label>云端设备数</label><input id="quotaMaxDevices" type="number" min="1"></div>
+        <div class="field"><label>vCPU</label><input id="quotaCpu" type="number" min="1"></div>
+        <div class="field"><label>内存 MB</label><input id="quotaMem" type="number" min="512"></div>
+        <div class="field"><label>磁盘 GB</label><input id="quotaDisk" type="number" min="1"></div>
+      </div>
+      <button type="button" id="saveQuota">更新该用户配额</button>
+    </div>
     <div class="rowbtns" style="margin-top:16px">
       <button id="resetSettings">恢复默认</button>
       <button class="primary" id="saveSettings">保存</button>
@@ -568,6 +583,7 @@ const state = {
   devices: [],
   device: params.get("device") || "",
   quota: null,
+  admin: false,
   gatewayUrl: "",
   capacity: 0,
   used: 0,
@@ -738,6 +754,7 @@ $("forgotBtn").onclick = async () => {
 
 async function refreshMe() {
   state.me = await api("/v1/auth/me");
+  state.admin = Boolean(state.me.admin || (state.me.user && state.me.user.isAdmin));
   updateUserUI();
   return state.me;
 }
@@ -1702,6 +1719,19 @@ function openSettings() {
     : localWorkerMode
       ? "本机设备不受云端配额限制"
       : "连接后显示";
+
+  // 管理员可以在这里直接改某个用户的配额。
+  const isAdmin = Boolean(state.me && state.me.user && state.me.user.isAdmin) || Boolean(state.admin);
+  $("adminQuota").hidden = !isAdmin;
+  if (isAdmin) {
+    if (q) {
+      $("quotaMaxDevices").value = q.maxDevices || 1;
+      $("quotaCpu").value = q.deviceCpu || 2;
+      $("quotaMem").value = q.deviceMemMb || 4096;
+      $("quotaDisk").value = q.deviceDiskGb || 20;
+    }
+    $("quotaEmail").value = (state.me && state.me.user && state.me.user.email) || "";
+  }
   $("settingsModal").hidden = false;
 }
 
@@ -1978,6 +2008,31 @@ $("saveSettings").onclick = () => {
   updateSessionChrome();
   toast("设置已保存，新建会话时生效");
 };
+$("saveQuota").onclick = async () => {
+  const email = $("quotaEmail").value.trim();
+  if (!email) { toast("请填写用户邮箱"); return; }
+  const btn = $("saveQuota");
+  btn.disabled = true;
+  try {
+    await api("/v1/quota", {
+      method: "PUT",
+      body: JSON.stringify({
+        email,
+        maxDevices: Number($("quotaMaxDevices").value) || 0,
+        deviceCpu: Number($("quotaCpu").value) || 0,
+        deviceMemMb: Number($("quotaMem").value) || 0,
+        deviceDiskGb: Number($("quotaDisk").value) || 0,
+      }),
+    });
+    toast("配额已更新");
+    await loadDevices();
+  } catch (e) {
+    toast(e.message || "更新失败");
+  } finally {
+    btn.disabled = false;
+  }
+};
+
 $("resetSettings").onclick = () => {
   $("setModel").value = "";
   $("setWorkspace").value = "";
