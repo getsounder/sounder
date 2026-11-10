@@ -82,6 +82,7 @@ services:
     command:
       - "-addr=0.0.0.0:9090"
       - "-token=${SOUNDER_TOKEN:-dev-token}"
+      - "-worker-secret=${SOUNDER_WORKER_SECRET:-dev-worker-secret}"
       - "-stale=90s"
     ports:
       - "${GATEWAY_PORT:-9090}:9090"
@@ -105,6 +106,11 @@ services:
       - "-store=postgres"
       - "-dsn=postgres://sounder:${POSTGRES_PASSWORD:-sounder}@sounder-postgres:5432/sounder?sslmode=disable"
       - "-public-gateway=${SOUNDER_PUBLIC_GATEWAY:-ws://localhost:19090/v1/tunnel}"
+      - "-worker-secret=${SOUNDER_WORKER_SECRET:-dev-worker-secret}"
+      - "-provisioner=${SOUNDER_PROVISIONER:-docker}"
+      - "-worker-image=${SOUNDER_WORKER_IMAGE:-ghcr.io/getsounder/sounder-worker:dev}"
+      - "-worker-model=${SOUNDER_WORKER_MODEL:-minimax-cn/MiniMax-M3}"
+      - "-docker-host=unix:///var/run/docker.sock"
       - "-auth=${SOUNDER_AUTH:-true}"
       - "-public-url=${SOUNDER_PUBLIC_URL:-http://localhost:8000}"
       - "-web-url=${SOUNDER_WEB_URL:-http://localhost:3000}"
@@ -123,6 +129,15 @@ services:
       - "-smtp-user=${SOUNDER_SMTP_USER:-}"
       - "-smtp-pass=${SOUNDER_SMTP_PASS:-}"
       - "-smtp-from=${SOUNDER_SMTP_FROM:-no-reply@sounder.local}"
+    environment:
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
+      MINIMAX_CN_API_KEY: ${MINIMAX_CN_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # provisioner 需要访问 docker.sock；开发环境直接用 root，生产改用 docker group 或 K8s。
+    user: "0:0"
     ports:
       - "${SERVER_PORT:-8000}:8000"
     depends_on:

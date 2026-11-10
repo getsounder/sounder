@@ -57,6 +57,9 @@ func (m *Memory) EnsureDevice(d Device) (Device, error) {
 		if d.Kind != "" {
 			dev.Kind = d.Kind
 		}
+		if d.Form != "" {
+			dev.Form = d.Form
+		}
 		if d.Platform != "" {
 			dev.Platform = d.Platform
 		}
@@ -76,6 +79,9 @@ func (m *Memory) EnsureDevice(d Device) (Device, error) {
 	}
 	if d.Kind == "" {
 		d.Kind = "cloud"
+	}
+	if d.Form == "" {
+		d.Form = "sandbox"
 	}
 	if d.CreatedAt.IsZero() {
 		d.CreatedAt = now

@@ -11,12 +11,14 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/getsounder/sounder-server/internal/api"
 	"github.com/getsounder/sounder-server/internal/auth"
 	"github.com/getsounder/sounder-server/internal/gateway"
+	"github.com/getsounder/sounder-server/internal/provision"
 	"github.com/getsounder/sounder-server/internal/store"
 )
 
@@ -44,6 +46,12 @@ func main() {
 	gwURL := flag.String("gateway", "http://127.0.0.1:9090", "sounder-gateway 地址")
 	gwToken := flag.String("gateway-token", "", "访问 Gateway 的 token")
 	publicGateway := flag.String("public-gateway", env("SOUNDER_PUBLIC_GATEWAY", ""), "下发给客户端的网关地址（如 wss://gateway.example.com/v1/tunnel）")
+	workerSecret := flag.String("worker-secret", env("SOUNDER_WORKER_SECRET", ""), "设备 worker token 的 HMAC 密钥（与网关一致）")
+	provisioner := flag.String("provisioner", env("SOUNDER_PROVISIONER", "none"), "云端设备 provisioner：none | docker")
+	workerImage := flag.String("worker-image", env("SOUNDER_WORKER_IMAGE", "ghcr.io/getsounder/sounder-worker:dev"), "provisioner 创建的 Worker 镜像")
+	workerModel := flag.String("worker-model", env("SOUNDER_WORKER_MODEL", ""), "新 Worker 的默认模型")
+	dockerHost := flag.String("docker-host", env("SOUNDER_DOCKER_HOST", "unix:///var/run/docker.sock"), "Docker socket（-provisioner=docker）")
+	provisionerGateway := flag.String("provisioner-gateway", env("SOUNDER_PROVISIONER_GATEWAY", ""), "provisioner 创建的 Worker 该连的网关地址；留空则由 public-gateway 推导（localhost→host.docker.internal）")
 	token := flag.String("token", env("SOUNDER_TOKEN", ""), "控制端访问本服务的 token；为空则不校验")
 	storeKind := flag.String("store", "memory", "memory | postgres")
 	dsn := flag.String("dsn", "", "PostgreSQL DSN（-store=postgres 时必填）")
@@ -126,7 +134,19 @@ func main() {
 	}
 
 	gw := gateway.New(*gwURL, *gwToken)
-	srv := api.New(st, ast, authSvc, gw, *token, *publicGateway)
+	var prov provision.Provisioner = provision.Disabled{}
+	if *provisioner == "docker" {
+		tunnelURL := *provisionerGateway
+		if tunnelURL == "" {
+			tunnelURL = hostReachable(*publicGateway)
+		}
+		if tunnelURL == "" {
+			tunnelURL = internalGatewayWS(*gwURL)
+		}
+		prov = provision.NewDocker(*dockerHost, *workerImage, tunnelURL, "cloud", *workerModel, 4)
+		log.Printf("provisioner: docker (image=%s, gateway=%s)", *workerImage, tunnelURL)
+	}
+	srv := api.New(st, ast, authSvc, gw, *token, *publicGateway, *workerSecret, prov)
 
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
@@ -154,4 +174,23 @@ func main() {
 	defer cancel()
 	_ = httpSrv.Shutdown(shutdown)
 	log.Println("bye")
+}
+
+// internalGatewayWS 把服务端用的网关 HTTP 地址换成容器内可达的隧道地址。
+func internalGatewayWS(base string) string {
+	base = strings.TrimRight(base, "/")
+	base = strings.TrimPrefix(base, "http://")
+	base = strings.TrimPrefix(base, "https://")
+	return "ws://" + base + "/v1/tunnel"
+}
+
+// hostReachable 把客户端用的 localhost 地址换成容器内可达的宿主机地址。
+func hostReachable(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	raw = strings.ReplaceAll(raw, "//localhost", "//host.docker.internal")
+	raw = strings.ReplaceAll(raw, "//127.0.0.1", "//host.docker.internal")
+	return raw
 }

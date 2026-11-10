@@ -18,7 +18,8 @@ import (
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:9090", "监听地址")
-	token := flag.String("token", "", "访问令牌；为空则不校验")
+	token := flag.String("token", "", "管理访问令牌；为空则不校验")
+	workerSecret := flag.String("worker-secret", "", "Worker 设备 token 的 HMAC 密钥（与服务端一致）；为空则不接受设备 token")
 	stale := flag.Duration("stale", 90*time.Second, "心跳超时，超时后从注册表移除")
 	flag.Parse()
 
@@ -34,7 +35,7 @@ func main() {
 		}
 	}()
 
-	srv := api.New(reg, *token)
+	srv := api.New(reg, *token, *workerSecret)
 	httpSrv := &http.Server{
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,

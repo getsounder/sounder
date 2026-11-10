@@ -70,6 +70,7 @@ type Device struct {
 	WorkerID   string    `json:"workerId"`
 	Name       string    `json:"name"`
 	Kind       string    `json:"kind"` // desktop-container | desktop-process | cloud
+	Form       string    `json:"form"` // computer（提交镜像持久化）| sandbox（挂载目录持久化）
 	Platform   string    `json:"platform"`
 	Version    string    `json:"version"`
 	LastSeenAt time.Time `json:"lastSeenAt"`
