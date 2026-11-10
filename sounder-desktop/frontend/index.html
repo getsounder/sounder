@@ -491,6 +491,10 @@
       <label>并发上限</label>
       <div class="hint" id="setCapacity">—</div>
     </div>
+    <div class="field">
+      <label>云端设备配额</label>
+      <div class="hint" id="setQuota">—</div>
+    </div>
     <div class="rowbtns" style="margin-top:16px">
       <button id="resetSettings">恢复默认</button>
       <button class="primary" id="saveSettings">保存</button>
@@ -1678,6 +1682,13 @@ function openSettings() {
   $("setCapacity").textContent = state.capacity
     ? `当前 ${state.used || 0} / ${state.capacity}（由 Worker 启动参数决定）`
     : "连接后显示";
+
+  const q = state.quota;
+  $("setQuota").textContent = q
+    ? `已用 ${state.cloudDevices || 0} / ${q.maxDevices} 台 · 每台 ${q.deviceCpu}C / ${Math.round((q.deviceMemMb || 0) / 1024)}G / ${q.deviceDiskGb}G`
+    : localWorkerMode
+      ? "本机设备不受云端配额限制"
+      : "连接后显示";
   $("settingsModal").hidden = false;
 }
 

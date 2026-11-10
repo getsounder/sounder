@@ -26,7 +26,7 @@ func newTestAPI(token string) (*Server, store.Store, store.AuthStore, http.Handl
 		SessionTTL:          time.Hour,
 	}, ast, nil)
 	_ = store.EnsureLegacyUser(ast, LegacyUserID)
-	srv := New(st, ast, svc, nil, token)
+	srv := New(st, ast, svc, nil, token, "", "", nil)
 	return srv, st, ast, srv.Handler()
 }
 
@@ -371,7 +371,7 @@ func TestAuthDisabledLegacyMode(t *testing.T) {
 	if err := store.EnsureLegacyUser(ast, LegacyUserID); err != nil {
 		t.Fatal(err)
 	}
-	srv := New(st, ast, nil, nil, "dev-token")
+	srv := New(st, ast, nil, nil, "dev-token", "", "", nil)
 	h := srv.Handler()
 	auth := map[string]string{"Authorization": "Bearer dev-token"}
 
