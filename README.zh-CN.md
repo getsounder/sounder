@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/logo.svg" width="92" alt="Sounder"></p>
+
 # Sounder
 
 [English](README.md) | **中文**

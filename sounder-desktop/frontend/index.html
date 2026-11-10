@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sounder</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237FA8FF'/%3E%3Cstop offset='.52' stop-color='%234F7FF2'/%3E%3Cstop offset='1' stop-color='%238B5BFF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='15' fill='url(%23g)'/%3E%3Ctext x='32' y='46' font-family='-apple-system,Helvetica,Arial,sans-serif' font-size='42' font-weight='800' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201024%201024'%3E%3Cdefs%3E%3ClinearGradient%20id='sfbg'%20x1='0'%20y1='0'%20x2='1'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%231b1e2a'/%3E%3Cstop%20offset='1'%20stop-color='%2308080b'/%3E%3C/linearGradient%3E%3ClinearGradient%20id='sfs'%20x1='0'%20y1='0'%20x2='.35'%20y2='1'%3E%3Cstop%20offset='0'%20stop-color='%23ffffff'/%3E%3Cstop%20offset='1'%20stop-color='%23a9c0ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='1024'%20height='1024'%20rx='228'%20fill='url(%23sfbg)'/%3E%3Cpath%20d='M650%20255C650%20160%20555%20155%20500%20155C395%20155%20345%20215%20345%20305C345%20395%20445%20428%20512%20445C595%20468%20670%20505%20670%20600C670%20695%20590%20745%20500%20745C405%20745%20345%20700%20345%20620'%20transform='translate(5%2062)'%20fill='none'%20stroke='url(%23sfs)'%20stroke-width='120'%20stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root {
     --bg: #0a0a0c; --panel: #0d0d10; --panel2: #131317; --panel3: #1a1a20;
@@ -36,11 +36,10 @@
     -webkit-user-select: none; user-select: none;
   }
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: .01em; }
-  .brand .logo {
-    width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
-    font-size: 11px; font-weight: 700; color: var(--accent2);
-    background: #16161c; border: 1px solid var(--line-strong);
-  }
+  .brand .logo { width: 22px; height: 22px; border-radius: 7px; overflow: hidden; display: block; }
+  .brand .logo svg { display: block; width: 100%; height: 100%; }
+  .auth-logo { width: 46px; height: 46px; margin: 0 auto 14px; border-radius: 13px; overflow: hidden; }
+  .auth-logo svg { display: block; width: 100%; height: 100%; }
   .brand-name { font-size: 13.5px; }
   .brand-name em { font-style: normal; color: var(--muted2); }
   #menuBtn { display: none; padding: 5px 9px; }
@@ -585,7 +584,7 @@
 <div class="app">
   <header>
     <button id="menuBtn" title="会话列表" aria-label="会话列表">☰</button>
-    <div class="brand"><span class="logo">S</span><span class="brand-name">Sound<em>er</em></span></div>
+    <div class="brand"><span class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><defs><linearGradient id="hbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b1e2a"/><stop offset="1" stop-color="#08080b"/></linearGradient><linearGradient id="hs" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#a9c0ff"/></linearGradient></defs><rect width="1024" height="1024" rx="228" fill="url(#hbg)"/><path d="M650 255C650 160 555 155 500 155C395 155 345 215 345 305C345 395 445 428 512 445C595 468 670 505 670 600C670 695 590 745 500 745C405 745 345 700 345 620" transform="translate(5 62)" fill="none" stroke="url(#hs)" stroke-width="120" stroke-linecap="round"/></svg></span><span class="brand-name">Sound<em>er</em></span></div>
     <button id="deviceChip" class="device-chip" hidden title="当前设备（点击切换）"><i id="deviceDot"></i><span class="d-name" id="deviceName">设备</span></button>
     <button id="wsChip" class="workspace-chip" hidden title="当前会话的工作区（点击复制）"></button>
     <button id="userChip" hidden title="账号">账号</button>
@@ -668,6 +667,7 @@
 
 <div class="modal" id="authModal" hidden>
   <div class="card">
+    <div class="auth-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><defs><linearGradient id="lbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b1e2a"/><stop offset="1" stop-color="#08080b"/></linearGradient><linearGradient id="ls" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#a9c0ff"/></linearGradient></defs><rect width="1024" height="1024" rx="228" fill="url(#lbg)"/><path d="M650 255C650 160 555 155 500 155C395 155 345 215 345 305C345 395 445 428 512 445C595 468 670 505 670 600C670 695 590 745 500 745C405 745 345 700 345 620" transform="translate(5 62)" fill="none" stroke="url(#ls)" stroke-width="120" stroke-linecap="round"/></svg></div>
     <h2>登录 Sounder</h2>
     <p class="sub" id="authSub">使用邮箱密码，或 Google / GitHub 账号。</p>
     <div class="tabs" id="authTabs">
