@@ -20,15 +20,16 @@ import (
 )
 
 type Server struct {
-	store     store.Store
-	authStore store.AuthStore
-	auth      *auth.Service
-	gw        *gateway.Client
-	token     string
+	store         store.Store
+	authStore     store.AuthStore
+	auth          *auth.Service
+	gw            *gateway.Client
+	token         string
+	publicGateway string // 客户端连网关用的 ws(s) 地址，通过 /v1/meta 下发
 }
 
-func New(st store.Store, authStore store.AuthStore, authSvc *auth.Service, gw *gateway.Client, token string) *Server {
-	return &Server{store: st, authStore: authStore, auth: authSvc, gw: gw, token: token}
+func New(st store.Store, authStore store.AuthStore, authSvc *auth.Service, gw *gateway.Client, token, publicGateway string) *Server {
+	return &Server{store: st, authStore: authStore, auth: authSvc, gw: gw, token: token, publicGateway: publicGateway}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -148,6 +149,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, _ *http.Request) {
 		"name":            "sounder",
 		"protocolVersion": "v1",
 		"store":           "memory",
+		"gatewayUrl":      s.publicGateway,
 	})
 }
 

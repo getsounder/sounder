@@ -104,6 +104,7 @@ services:
       - "-token=${SOUNDER_TOKEN:-dev-token}"
       - "-store=postgres"
       - "-dsn=postgres://sounder:${POSTGRES_PASSWORD:-sounder}@sounder-postgres:5432/sounder?sslmode=disable"
+      - "-public-gateway=${SOUNDER_PUBLIC_GATEWAY:-ws://localhost:19090/v1/tunnel}"
       - "-auth=${SOUNDER_AUTH:-true}"
       - "-public-url=${SOUNDER_PUBLIC_URL:-http://localhost:8000}"
       - "-web-url=${SOUNDER_WEB_URL:-http://localhost:3000}"
