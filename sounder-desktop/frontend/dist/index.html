@@ -433,8 +433,17 @@
   details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 
   @media (max-width: 720px) {
-    header { padding: 0 10px; gap: 8px; }
+    html, body { overflow-x: hidden; }
+    header { padding: 0 10px; gap: 6px; overflow: hidden; }
     header input { max-width: none; }
+    .brand-name { display: none; }
+    #userChip { display: none; }
+    #deviceChip { max-width: 122px; }
+    .status { gap: 4px; }
+    #findBar { left: 8px; right: 8px; }
+    #findBar input { flex: 1; width: auto; min-width: 0; }
+    .msg, .approval, .ask, .tool, .error { max-width: 100%; }
+    .approval pre, .code pre { max-width: 100%; }
     .workspace-chip { display: none; }
     #menuBtn { display: inline-block; }
     .status span { display: none; }
@@ -465,7 +474,7 @@
   .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-DEAIfsxo.js"></script>
+  <script type="module" crossorigin src="/assets/index-D4B5ooP8.js"></script>
 </head>
 <body>
 <div class="app">
