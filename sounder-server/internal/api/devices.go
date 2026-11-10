@@ -434,3 +434,67 @@ func (s *Server) handleStopDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "stopped"})
 }
+
+// handleGetQuota 返回当前用户的配额与用量。
+func (s *Server) handleGetQuota(w http.ResponseWriter, r *http.Request) {
+	ctx := authFrom(r)
+	q, err := s.store.GetQuota(ctx.UserID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	devices, _ := s.store.ListDevices(ctx.UserID)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"quota": q,
+		"usage": map[string]any{
+			"devices":      len(devices),
+			"cloudDevices": countCloud(devices),
+		},
+	})
+}
+
+// handleSetQuota 调整某个用户的配额（仅管理员）。
+func (s *Server) handleSetQuota(w http.ResponseWriter, r *http.Request) {
+	ctx := authFrom(r)
+	if !ctx.Admin {
+		writeErr(w, http.StatusForbidden, "admin only")
+		return
+	}
+	var req struct {
+		UserID       string `json:"userId"`
+		MaxDevices   int    `json:"maxDevices"`
+		DeviceCPU    int    `json:"deviceCpu"`
+		DeviceMemMB  int    `json:"deviceMemMb"`
+		DeviceDiskGB int    `json:"deviceDiskGb"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if req.UserID == "" {
+		writeErr(w, http.StatusBadRequest, "userId required")
+		return
+	}
+	q, err := s.store.GetQuota(req.UserID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if req.MaxDevices > 0 {
+		q.MaxDevices = req.MaxDevices
+	}
+	if req.DeviceCPU > 0 {
+		q.DeviceCPU = req.DeviceCPU
+	}
+	if req.DeviceMemMB > 0 {
+		q.DeviceMemMB = req.DeviceMemMB
+	}
+	if req.DeviceDiskGB > 0 {
+		q.DeviceDiskGB = req.DeviceDiskGB
+	}
+	if err := s.store.SetQuota(q); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, q)
+}

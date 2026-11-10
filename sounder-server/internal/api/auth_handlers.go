@@ -51,7 +51,7 @@ func (s *Server) authenticate(r *http.Request) (authContext, bool) {
 	token := s.tokenFromRequest(r)
 	if token != "" && s.auth != nil {
 		if u, sess, err := s.auth.Authenticate(token); err == nil {
-			return authContext{UserID: u.ID, SessionID: sess.ID, Token: token}, true
+			return authContext{UserID: u.ID, SessionID: sess.ID, Token: token, Admin: u.IsAdmin}, true
 		}
 	}
 	if s.token != "" && subtle.ConstantTimeCompare([]byte(token), []byte(s.token)) == 1 {

@@ -53,6 +53,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/worker-tokens", s.handleWorkerToken)
 	mux.HandleFunc("POST /v1/devices/{id}/start", s.handleStartDevice)
 	mux.HandleFunc("POST /v1/devices/{id}/stop", s.handleStopDevice)
+	mux.HandleFunc("GET /v1/quota", s.handleGetQuota)
+	mux.HandleFunc("PUT /v1/quota", s.handleSetQuota)
 
 	mux.HandleFunc("GET /v1/auth/providers", s.handleAuthProviders)
 	mux.HandleFunc("POST /v1/auth/register", s.handleRegister)
