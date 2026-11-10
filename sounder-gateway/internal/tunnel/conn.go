@@ -36,6 +36,9 @@ func New(ws *websocket.Conn, onEvent EventHandler, onClose func(string)) *Conn {
 
 func (c *Conn) WorkerID() string { return c.workerID }
 
+// Close 关闭底层连接（Registry 清理时用，让 Worker 重连并重新注册）。
+func (c *Conn) Close() error { return c.ws.Close() }
+
 func (c *Conn) SetWorkerID(id string) { c.workerID = id }
 
 func (c *Conn) Write(f protocol.Frame) error {

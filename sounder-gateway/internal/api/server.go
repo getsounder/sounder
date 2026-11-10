@@ -105,6 +105,12 @@ func (s *Server) handleTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 心跳：收到 pong 就续读超时，避免空闲隧道被 90s 读超时踢掉。
+	_ = ws.SetReadDeadline(time.Now().Add(90 * time.Second))
+	ws.SetPongHandler(func(string) error {
+		return ws.SetReadDeadline(time.Now().Add(90 * time.Second))
+	})
+
 	conn := tunnel.New(ws, s.reg.Publish, func(id string) {
 		log.Printf("worker disconnected: %s", id)
 		s.reg.Unregister(id)
@@ -124,6 +130,18 @@ func (s *Server) handleTunnel(w http.ResponseWriter, r *http.Request) {
 		_ = ws.Close()
 		return
 	}
+
+	// 心跳续期：Worker 每 25s 发 ping；收到就回 pong 并续读超时，
+	// 空闲隧道不会因为 90s 没数据被判超时，也不会被 Cleanup 当 stale 摘掉。
+	ws.SetPingHandler(func(appData string) error {
+		s.reg.Touch(hello.WorkerID, -1)
+		_ = ws.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(10*time.Second))
+		return ws.SetReadDeadline(time.Now().Add(90 * time.Second))
+	})
+	ws.SetPongHandler(func(string) error {
+		s.reg.Touch(hello.WorkerID, -1)
+		return ws.SetReadDeadline(time.Now().Add(90 * time.Second))
+	})
 
 	conn.SetWorkerID(hello.WorkerID)
 	s.reg.Register(&registry.Worker{
