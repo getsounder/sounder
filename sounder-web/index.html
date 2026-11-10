@@ -1734,7 +1734,7 @@ function renderSessions() {
     li.className = state.current && state.current.id === s.id ? "active" : "";
     const title = sessionTitle(s);
     const shortModel = String(s.model || "").includes("/") ? String(s.model).split("/").pop() : String(s.model || "");
-    const sub = [shortModel, relTime(s.createdAt)].filter(Boolean).join(" · ");
+    const sub = shortModel || STATE_LABELS[s.state] || "本地会话";
     li.innerHTML =
       `<span class="s-badge" style="--c:${badgeColor(s)}">${esc(title.slice(0, 1).toUpperCase())}</span>` +
       `<span class="s-main"><span class="s-title">${esc(title)}</span><span class="s-sub">${esc(sub || "本地会话")}</span></span>` +
