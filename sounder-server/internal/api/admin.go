@@ -1,8 +1,11 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/getsounder/sounder-server/internal/gateway"
 	"github.com/getsounder/sounder-server/internal/store"
@@ -154,4 +157,110 @@ func (s *Server) handleAdminSessions(w http.ResponseWriter, r *http.Request) {
 		out = append(out, view{Session: sess, OwnerEmail: emails[sess.OwnerID]})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sessions": out})
+}
+
+// handleUpdateUser 调整用户状态或管理员身份。
+func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	if !adminOnly(w, r) {
+		return
+	}
+	ctx := authFrom(r)
+	id := r.PathValue("id")
+	if id == ctx.UserID {
+		writeErr(w, http.StatusBadRequest, "不能修改自己的状态或权限")
+		return
+	}
+	u, err := s.authStore.GetUser(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "user not found")
+		return
+	}
+	var req struct {
+		Status  *string `json:"status,omitempty"`
+		IsAdmin *bool   `json:"isAdmin,omitempty"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if req.Status != nil {
+		if *req.Status != "active" && *req.Status != "disabled" {
+			writeErr(w, http.StatusBadRequest, "status 只能是 active 或 disabled")
+			return
+		}
+		u.Status = *req.Status
+	}
+	if req.IsAdmin != nil {
+		u.IsAdmin = *req.IsAdmin
+	}
+	u.UpdatedAt = time.Now()
+	if err := s.authStore.UpdateUser(u); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// 禁用用户时顺手吊销其会话令牌。
+	if u.Status == "disabled" {
+		_ = s.authStore.DeleteUserAuthSessions(u.ID)
+	}
+	_ = s.authStore.Audit(store.AuditEvent{
+		UserID: u.ID, Action: "admin.user.update", IP: clientIP(r), UserAgent: r.UserAgent(),
+	})
+	writeJSON(w, http.StatusOK, u)
+}
+
+// handleDeleteUser 删除用户及其会话记录。
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	if !adminOnly(w, r) {
+		return
+	}
+	ctx := authFrom(r)
+	id := r.PathValue("id")
+	if id == ctx.UserID {
+		writeErr(w, http.StatusBadRequest, "不能删除自己")
+		return
+	}
+	if err := s.store.DeleteByOwner(id); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.authStore.DeleteUser(id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "user not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	_ = s.authStore.Audit(store.AuditEvent{
+		UserID: id, Action: "admin.user.delete", IP: clientIP(r), UserAgent: r.UserAgent(),
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleAdminAudit 返回最近的操作审计。
+func (s *Server) handleAdminAudit(w http.ResponseWriter, r *http.Request) {
+	if !adminOnly(w, r) {
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	events, err := s.authStore.ListAuditEvents(limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	emails := map[string]string{}
+	if users, _, err := s.authStore.ListUsers(1000, 0); err == nil {
+		for _, u := range users {
+			emails[u.ID] = u.Email
+		}
+	}
+	type view struct {
+		store.AuditEvent
+		UserEmail string `json:"userEmail,omitempty"`
+	}
+	out := make([]view, 0, len(events))
+	for _, e := range events {
+		out = append(out, view{AuditEvent: e, UserEmail: emails[e.UserID]})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"events": out})
 }

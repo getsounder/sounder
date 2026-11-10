@@ -375,3 +375,36 @@ func (p *Postgres) ListUsers(limit, offset int) ([]User, int, error) {
 	}
 	return out, total, rows.Err()
 }
+
+func (p *Postgres) ListAuditEvents(limit int) ([]AuditEvent, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := p.db.Query(
+		`SELECT COALESCE(user_id,''), action, ip, user_agent, detail, created_at
+		 FROM audit_events ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AuditEvent
+	for rows.Next() {
+		var e AuditEvent
+		if err := rows.Scan(&e.UserID, &e.Action, &e.IP, &e.UserAgent, &e.Detail, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) DeleteUser(id string) error {
+	res, err := p.db.Exec(`DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

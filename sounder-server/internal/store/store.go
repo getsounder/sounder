@@ -30,6 +30,7 @@ type Store interface {
 	ListByOwner(ownerID string) []Session
 	UpdateState(id, state string) error
 	Delete(id string) error
+	DeleteByOwner(ownerID string) error
 
 	// 设备 = 一个 Worker 运行环境（桌面 container / 桌面 process / 云端容器）。
 	EnsureDevice(d Device) (Device, error)
@@ -163,6 +164,17 @@ func (m *Memory) UpdateState(id, state string) error {
 	s.State = state
 	s.UpdatedAt = time.Now()
 	m.data[id] = s
+	return nil
+}
+
+func (m *Memory) DeleteByOwner(ownerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, s := range m.data {
+		if s.OwnerID == ownerID {
+			delete(m.data, id)
+		}
+	}
 	return nil
 }
 

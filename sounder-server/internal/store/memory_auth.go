@@ -310,3 +310,44 @@ func (m *MemoryAuth) Audit(e AuditEvent) error {
 	m.audits = append(m.audits, e)
 	return nil
 }
+
+func (m *MemoryAuth) ListAuditEvents(limit int) ([]AuditEvent, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	out := make([]AuditEvent, 0, limit)
+	for i := len(m.audits) - 1; i >= 0 && len(out) < limit; i-- {
+		out = append(out, m.audits[i])
+	}
+	return out, nil
+}
+
+func (m *MemoryAuth) DeleteUser(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[id]
+	if !ok {
+		return ErrNotFound
+	}
+	delete(m.users, id)
+	delete(m.byEmail, emailKey(u.Email))
+	for k, ident := range m.identities {
+		if ident.UserID == id {
+			delete(m.identities, k)
+		}
+	}
+	delete(m.passwords, id)
+	for sid, sess := range m.sessions {
+		if sess.UserID == id {
+			delete(m.sessions, sid)
+		}
+	}
+	for tid, tok := range m.tokens {
+		if tok.UserID == id {
+			delete(m.tokens, tid)
+		}
+	}
+	return nil
+}

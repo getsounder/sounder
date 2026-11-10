@@ -92,5 +92,8 @@ type AuthStore interface {
 	ConsumeAuthToken(hash []byte, kind string, now time.Time) (AuthToken, error)
 
 	Audit(e AuditEvent) error
-}
+	ListAuditEvents(limit int) ([]AuditEvent, error)
 
+	// DeleteUser 删除用户（身份、凭据、会话由外键级联）。
+	DeleteUser(id string) error
+}
