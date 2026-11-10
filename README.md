@@ -144,9 +144,11 @@ expected; the control-plane flow above still works.
 | Android APK build + emulator session flow | ✅ |
 | Local auth e2e (`scripts/e2e-auth.sh`, 74 assertions) | ✅ |
 | Full docker-compose stack (8 services) | ✅ |
-| Desktop GUI on a graphical session | ⚠️ not run yet |
+| CI (build/vet/test, fresh-DB migrations) | ✅ |
+| Versioned DB migrations + backup/restore drill | ✅ |
+| Desktop GUI on a graphical session | ⚠️ app exits spontaneously, under investigation |
 | iOS build | ⚠️ needs full Xcode |
-| Kubernetes manifests | ❌ not written |
+| Kubernetes manifests (kustomize) | ✅ |
 
 ## Policy and safety
 
@@ -159,10 +161,24 @@ PiG does not sandbox model output. Sounder adds a policy layer in front of every
 - Ten high-risk command patterns (`curl | sh`, writes to `.git/hooks`, `rm -rf /`, …) always
   require approval, regardless of session state.
 
+## Release and backup
+
+```bash
+make check-js        # inline frontend syntax + web/desktop source drift
+make test            # server / worker / gateway
+./scripts/backup.sh  # PostgreSQL + worker /data
+./scripts/restore.sh backups/<timestamp> -y
+```
+
+Tagging `v*` runs `.github/workflows/release.yml`, which builds the three images
+with `VERSION`/`COMMIT` injected and publishes them to GHCR. `/v1/meta` reports the
+version and the live store implementation.
+
 ## Documentation
 
 - [Architecture and design notes (Chinese)](pig-agent-cloud-architecture.md)
 - [User system: local accounts + Google/GitHub (Chinese)](docs/user-system.md)
+- [Backup and restore (Chinese)](docs/backup.md)
 - [Worker](sounder-worker/README.md)
 - [Gateway](sounder-gateway/README.md)
 - [Control plane](sounder-server/README.md)

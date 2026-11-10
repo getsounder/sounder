@@ -87,6 +87,9 @@ type Memory struct {
 	quotas  map[string]Quota
 }
 
+// Kind 供 /v1/meta 展示当前存储实现。
+func (m *Memory) Kind() string { return "memory" }
+
 func NewMemory() *Memory {
 	return &Memory{
 		data:    make(map[string]Session),

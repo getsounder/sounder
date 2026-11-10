@@ -140,9 +140,11 @@ curl -H "Authorization: Bearer dev-token" localhost:8000/v1/workers
 | Android APK 构建 + 模拟器会话流程 | ✅ |
 | 本地认证 e2e（`scripts/e2e-auth.sh`，74 项断言） | ✅ |
 | docker-compose 全栈（8 服务） | ✅ |
-| 桌面 GUI（图形会话） | ⚠️ 尚未启动验证 |
+| CI（build/vet/test + 空库迁移） | ✅ |
+| 版本化迁移 + 备份恢复演练 | ✅ |
+| 桌面 GUI（图形会话） | ⚠️ 存在自行退出问题，排查中 |
 | iOS 构建 | ⚠️ 需要完整 Xcode |
-| Kubernetes manifests | ❌ 未编写 |
+| Kubernetes manifests（kustomize） | ✅ |
 
 ## 策略与安全
 
@@ -153,10 +155,23 @@ PiG 不对模型输出做沙箱。Sounder 在每个工具调用前加了一层�
 - `bash` 和对外访问类工具会阻塞等待人工审批；拒绝会作为 error tool result 回给模型。
 - 十条高危命令模式（`curl | sh`、写 `.git/hooks`、`rm -rf /` 等）无论会话状态如何都必须审批。
 
+## 发布与备份
+
+```bash
+make check-js        # 内联前端语法 + web/desktop 源文件一致性
+make test            # server / worker / gateway
+./scripts/backup.sh  # PostgreSQL + worker /data
+./scripts/restore.sh backups/<时间戳> -y
+```
+
+打 `v*` tag 会触发 `.github/workflows/release.yml`，把 `VERSION`/`COMMIT` 注入三个镜像并推送到
+GHCR；`/v1/meta` 会返回版本号与当前存储实现。
+
 ## 文档
 
 - [架构与设计说明](pig-agent-cloud-architecture.md)
 - [用户体系调研：自建账号 + Google/GitHub 登录](docs/user-system.md)
+- [备份与恢复](docs/backup.md)
 - [Worker](sounder-worker/README.md)
 - [Gateway](sounder-gateway/README.md)
 - [控制面](sounder-server/README.md)

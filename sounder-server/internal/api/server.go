@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/getsounder/sounder-server/internal/auth"
+	"github.com/getsounder/sounder-server/internal/buildinfo"
 	"github.com/getsounder/sounder-server/internal/gateway"
 	"github.com/getsounder/sounder-server/internal/provision"
 	"github.com/getsounder/sounder-server/internal/store"
@@ -174,10 +175,15 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleMeta(w http.ResponseWriter, _ *http.Request) {
+	kind := "memory"
+	if k, ok := s.store.(interface{ Kind() string }); ok {
+		kind = k.Kind()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":            "sounder",
+		"version":         buildinfo.String(),
 		"protocolVersion": "v1",
-		"store":           "memory",
+		"store":           kind,
 		"gatewayUrl":      s.publicGateway,
 	})
 }
