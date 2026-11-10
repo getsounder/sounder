@@ -223,6 +223,9 @@ func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	s.audit(r, "device.create", map[string]any{
+		"deviceId": dev.ID, "workerId": dev.WorkerID, "kind": dev.Kind, "form": dev.Form,
+	})
 	writeJSON(w, http.StatusCreated, view)
 }
 
@@ -243,6 +246,7 @@ func (s *Server) handleRenameDevice(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	s.audit(r, "device.rename", map[string]any{"deviceId": r.PathValue("id"), "name": req.Name})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -270,6 +274,7 @@ func (s *Server) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.audit(r, "device.delete", map[string]any{"deviceId": id})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -453,6 +458,7 @@ func (s *Server) handleStopDevice(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "该设备由客户端管理，请在其所在端关机")
 		return
 	}
+	s.audit(r, "device.stop", map[string]any{"deviceId": dev.ID, "workerId": dev.WorkerID})
 	if err := s.prov.Stop(r.Context(), dev.WorkerID, provision.Form(dev.Form).Normalize()); err != nil {
 		writeErr(w, http.StatusBadGateway, "关机失败: "+err.Error())
 		return

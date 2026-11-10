@@ -283,7 +283,23 @@ func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	s.audit(r, "session.rename", map[string]any{"sessionId": sess.ID, "workerId": sess.WorkerID})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(out)
+}
+
+// audit 记录一条操作审计（设备/会话等非管理员操作）。
+func (s *Server) audit(r *http.Request, action string, detail map[string]any) {
+	if s.authStore == nil {
+		return
+	}
+	ctx := authFrom(r)
+	var raw json.RawMessage
+	if len(detail) > 0 {
+		raw, _ = json.Marshal(detail)
+	}
+	_ = s.authStore.Audit(store.AuditEvent{
+		UserID: ctx.UserID, Action: action, IP: clientIP(r), UserAgent: r.UserAgent(), Detail: raw,
+	})
 }

@@ -55,7 +55,7 @@ func (s *Server) authenticate(r *http.Request) (authContext, bool) {
 
 func publicAuthPath(path string) bool {
 	switch path {
-	case "/healthz", "/readyz", "/v1/meta",
+	case "/healthz", "/readyz", "/metrics", "/v1/meta",
 		"/v1/auth/providers", "/v1/auth/register", "/v1/auth/login",
 		"/v1/auth/password/forgot", "/v1/auth/password/reset",
 		"/v1/auth/email/verify", "/v1/auth/native/exchange",
@@ -177,6 +177,7 @@ func (s *Server) handleAuthProviders(w http.ResponseWriter, _ *http.Request) {
 		"requireEmailVerify": cfg.RequireEmailVerify,
 		"providers":          providers,
 		"githubDeviceFlow":   cfg.GitHub.Enabled && cfg.GitHub.ClientID != "",
+		"mail":               s.auth.MailConfigured(),
 	})
 }
 

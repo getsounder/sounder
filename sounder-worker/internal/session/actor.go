@@ -29,6 +29,20 @@ import (
 	"github.com/getsounder/sounder-worker/internal/protocol"
 )
 
+// askUserPrompt 告诉模型如何向用户提问（走 sounder-ask，被 beforeToolCall 拦截）。
+const askUserPrompt = `## 向用户提问
+
+当需要用户补充信息或做选择时，不要猜测，执行下面这条命令向用户提问（它不会真的运行 shell，
+而是把问题抛给界面，用户的回答会作为工具结果返回给你）：
+
+  sounder-ask "你的问题" --options "选项A|选项B"
+
+多个问题一次问完：
+
+  sounder-ask --json '{"questions":[{"question":"要备份吗？","options":["要","不要"]},{"question":"窗口选哪个？"}]}'
+
+提问要具体、可回答；能自己查到的不要问。`
+
 type Quota struct {
 	MaxConcurrentTurns int
 	SendTimeout        time.Duration
@@ -135,10 +149,22 @@ func New(opts Options) (*Actor, error) {
 		})
 	}
 
+	loader := coding.NewDefaultResourceLoader(coding.DefaultResourceLoaderOptions{
+		CWD:                opts.CWD,
+		AgentDir:           opts.AgentDir,
+		SettingsManager:    services.SettingsManager(),
+		AppendSystemPrompt: []string{askUserPrompt},
+	})
+	// 传入的 loader 不会被自动 reload，必须自己发现一次资源，追加的提示才会生效。
+	if err := loader.Reload(); err != nil {
+		log.Printf("session %s: reload resource loader: %v", opts.ID, err)
+	}
+
 	sess, err := rt.New(coding.SessionStartOptions{
-		Model:        model,
-		SystemPrompt: opts.SystemPrompt,
-		ResumePath:   opts.ResumePath,
+		Model:          model,
+		SystemPrompt:   opts.SystemPrompt,
+		ResumePath:     opts.ResumePath,
+		ResourceLoader: loader,
 		// 每个工具执行前都走策略与审批；Block 会变成 error tool result 回给模型。
 		BeforeToolCall: []agent.BeforeToolCallHook{a.beforeToolCall},
 	})
@@ -147,6 +173,12 @@ func New(opts Options) (*Actor, error) {
 		services.Close()
 		return nil, fmt.Errorf("new session: %w", err)
 	}
+	if po := sess.GetSystemPromptOptions(); po != nil {
+		log.Printf("session %s: ask-user prompt injected=%v", opts.ID, strings.Contains(po.AppendSystemPrompt, "sounder-ask"))
+	} else {
+		log.Printf("session %s: system prompt options unavailable", opts.ID)
+	}
+
 	a.session = sess
 
 	// 同步回调：只做有界投递，禁止在此写库/发网络。

@@ -94,6 +94,7 @@
   .device-menu .dm-foot button { flex: 1; font-size: 12px; padding: 6px; }
   .status {
     margin-left: auto; display: flex; align-items: center; gap: 6px;
+    background: transparent; border: 1px solid transparent; border-radius: 999px; padding: 3px 8px;
     font-size: 11.5px; color: var(--muted2); transition: color .2s;
   }
   .status i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted2); transition: background .2s; }
@@ -579,7 +580,7 @@
   .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-DVBEa8Ov.js"></script>
+  <script type="module" crossorigin src="/assets/index-D2z6eg1_.js"></script>
 </head>
 <body>
 <div class="app">
@@ -592,7 +593,7 @@
     <button id="approvalBadge" class="badge-pill" hidden title="待处理的审批/提问">0</button>
     <button id="findBtn" class="icon-btn" title="在会话内搜索（⌘F）" aria-label="搜索">⌕</button>
     <button id="settingsBtn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
-    <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
+    <button class="status" id="connBtn" type="button" title="点击重连"><i id="conn"></i><span id="connText">未连接</span></button>
   </header>
   <div id="setup" hidden>
     <input id="api" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="服务器地址，如 https://sounder.example.com（仅首次连接需要）">
@@ -710,6 +711,13 @@
     <div class="field">
       <label>工作区（留空则用 Worker 默认目录）</label>
       <input id="setWorkspace" placeholder="/Users/me/code/project" autocapitalize="off" autocorrect="off">
+    </div>
+    <div class="field">
+      <label>离线设备</label>
+      <div class="hint" style="display:flex;align-items:center;gap:8px">
+        <span id="staleInfo">—</span>
+        <button id="pruneBtn" class="mini" type="button">清理</button>
+      </div>
     </div>
     <div class="field">
       <label>并发上限</label>

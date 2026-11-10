@@ -46,11 +46,13 @@ func New(st store.Store, authStore store.AuthStore, authSvc *auth.Service, gw *g
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/meta", s.handleMeta)
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("GET /v1/workers", s.handleWorkers)
 	mux.HandleFunc("GET /v1/devices", s.handleDevices)
 	mux.HandleFunc("POST /v1/devices", s.handleCreateDevice)
 	mux.HandleFunc("PATCH /v1/devices/{id}", s.handleRenameDevice)
 	mux.HandleFunc("DELETE /v1/devices/{id}", s.handleDeleteDevice)
+	mux.HandleFunc("POST /v1/devices/prune", s.handlePruneDevices)
 	mux.HandleFunc("POST /v1/worker-tokens", s.handleWorkerToken)
 	mux.HandleFunc("POST /v1/worker-tokens/refresh", s.handleRefreshWorkerToken)
 	mux.HandleFunc("POST /v1/devices/{id}/start", s.handleStartDevice)
@@ -101,7 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	return s.cors(s.authMiddleware(mux))
+	return s.metricsMiddleware(s.cors(s.authMiddleware(mux)))
 }
 
 // allowedOrigin 判断浏览器 Origin 是否属于配置的前端/服务地址。
@@ -386,8 +388,19 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err.Error())
 		return
 	}
-	_, _, _ = s.gw.RPC(r.Context(), sess.WorkerID, http.MethodDelete, "/v1/sessions/"+sess.ID, nil)
+	// Worker 离线时先标成 deleting，由巡检在它恢复后补删，避免本地 JSONL 残留。
+	if s.gw != nil {
+		if _, _, err := s.gw.RPC(r.Context(), sess.WorkerID, http.MethodDelete, "/v1/sessions/"+sess.ID, nil); err != nil {
+			_ = s.store.UpdateState(sess.ID, "deleting")
+			writeJSON(w, http.StatusAccepted, map[string]any{
+				"status": "pending",
+				"detail": "worker 离线，已排队删除，恢复后自动清理",
+			})
+			return
+		}
+	}
 	_ = s.store.Delete(sess.ID)
+	s.audit(r, "session.delete", map[string]any{"sessionId": sess.ID, "workerId": sess.WorkerID})
 	w.WriteHeader(http.StatusNoContent)
 }
 

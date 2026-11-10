@@ -29,6 +29,7 @@ type Store interface {
 	List() []Session
 	ListByOwner(ownerID string) []Session
 	UpdateState(id, state string) error
+	ListByState(state string) []Session
 	Delete(id string) error
 	DeleteByOwner(ownerID string) error
 
@@ -165,6 +166,18 @@ func (m *Memory) UpdateState(id, state string) error {
 	s.UpdatedAt = time.Now()
 	m.data[id] = s
 	return nil
+}
+
+func (m *Memory) ListByState(state string) []Session {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]Session, 0)
+	for _, s := range m.data {
+		if s.State == state {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func (m *Memory) DeleteByOwner(ownerID string) error {

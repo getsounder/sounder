@@ -75,3 +75,14 @@ device key（90 天）  --POST /v1/worker-tokens/refresh-->  gateway token（1 �
 - Docker：Computer（镜像 236MB、容器 ID 不变）与 Sandbox（删容器保留卷、开机新容器 ID）双向验证
 - OrbStack K8s：PVC 绑定 20Gi、Pod 运行、Worker 换到短期令牌并连上网关、经服务端在 Pod 上建会话成功；
   关机删 Pod（PVC 保留）、开机重建 Pod、删除设备清理 Pod + PVC
+
+## 7. 运维与可观测
+
+- `GET /metrics`（Prometheus 文本）：请求计数/耗时、会话按状态、设备在线/离线、网关 Worker 数
+- `POST /v1/devices/prune`：清理「离线且没有会话」的设备；管理端设置面板也有「清理离线设备」
+- 服务端后台巡检（每进程启动即跑）：
+  - 每分钟重试「worker 离线时没删掉」的会话（状态 `deleting`）
+  - 每小时清理 last_seen 超过 7 天且没有会话的设备
+- 审计：登录/注册/改密、管理员对用户的操作、设备创建/改名/启停/删除、会话删除/改名
+- 客户端事件流断线会自动重连（指数退避，按 `after=lastSeq` 续传），顶栏状态胶囊可点击立即重连
+- 审批超时（默认 5 分钟）后，聊天里的卡片会被置灰标记「已超时或已在别处处理」
