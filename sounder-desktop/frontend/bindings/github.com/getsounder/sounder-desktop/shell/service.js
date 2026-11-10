@@ -28,6 +28,18 @@ export function AddDevice(name) {
 }
 
 /**
+ * AddDeviceWithForm 新建一台设备；form=computer 时关机走镜像提交。
+ * @param {string} name
+ * @param {string} form
+ * @returns {$CancellablePromise<$models.Device>}
+ */
+export function AddDeviceWithForm(name, form) {
+    return $Call.ByID(2017285505, name, form).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
+}
+
+/**
  * ListDevices 返回本机设备（含运行状态）；不含 token。
  * @returns {$CancellablePromise<$models.Device[]>}
  */
@@ -64,6 +76,20 @@ export function RemoveDevice(id) {
  */
 export function RenameDevice(id, name) {
     return $Call.ByID(649203106, id, name);
+}
+
+/**
+ * SetDeviceTunnel 用控制面下发的设备 token 重新拉起设备，
+ * 让隧道凭据从"共享管理 token"换成"这台设备专属的 token"。
+ * @param {string} id
+ * @param {string} gateway
+ * @param {string} token
+ * @returns {$CancellablePromise<$models.Device>}
+ */
+export function SetDeviceTunnel(id, gateway, token) {
+    return $Call.ByID(1474423186, id, gateway, token).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
 }
 
 /**
