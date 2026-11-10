@@ -33,6 +33,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:0", "监听地址；0 表示随机端口")
 	data := flag.String("data", "/data", "数据目录（workspace / agent / sessions）")
 	model := flag.String("model", "", "默认 provider/model")
+	modelsFile := flag.String("models-file", os.Getenv("SOUNDER_MODELS_FILE"), "可选：PiG models.json（自定义 provider / 本地模型）")
 	max := flag.Int("max", 4, "本 Worker 最大会话数")
 	token := flag.String("token", "", "访问令牌；为空则随机生成")
 	sysPrompt := flag.String("system-prompt", "", "默认 system prompt")
@@ -58,6 +59,9 @@ func main() {
 	}
 
 	m := session.NewManager(*max, *data, *model, *sysPrompt)
+	if *modelsFile != "" {
+		m.SetModelsFile(*modelsFile)
+	}
 	gate := approval.NewGate(5 * time.Minute)
 	m.SetApprover(gate)
 

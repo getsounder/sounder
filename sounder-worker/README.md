@@ -21,6 +21,13 @@ Dockerfile             与云端同 digest
 go mod tidy
 go run ./cmd/sounder-worker -addr=127.0.0.1:8080 -data=/tmp/sounder-data -model=openai/gpt-5 -max=4
 
+# 本地 Ollama（模型必须支持 tools，例如 qwen2.5:3b）
+OLLAMA_HOST=http://127.0.0.1:11434/v1 go run ./cmd/sounder-worker \
+  -addr=127.0.0.1:8080 -data=/tmp/sounder-data -model=ollama/qwen2.5:3b -max=4
+
+# 其他 OpenAI 兼容服务：用 models.json 指定 baseUrl/api
+go run ./cmd/sounder-worker -models-file=/path/to/models.json ...
+
 # 需要被远程控制时，连上 Gateway（桌面 Worker 在 NAT 后面走这条）
 go run ./cmd/sounder-worker -addr=127.0.0.1:8080 -data=/tmp/sounder-data \
   -model=openai/gpt-5 -gateway=ws://127.0.0.1:9090/v1/tunnel -worker-kind=desktop

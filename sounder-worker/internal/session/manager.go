@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -26,6 +27,8 @@ type Manager struct {
 	prompt   string
 	approver policy.Approver
 	sink     func(protocol.Envelope)
+	// modelsFile 是可选的 PiG models.json；为空时按 dataDir/models.json 查找。
+	modelsFile string
 }
 
 func NewManager(max int, dataDir, modelID, systemPrompt string) *Manager {
@@ -33,11 +36,12 @@ func NewManager(max int, dataDir, modelID, systemPrompt string) *Manager {
 		max = 4
 	}
 	return &Manager{
-		actors:  make(map[string]*Actor),
-		max:     max,
-		dataDir: dataDir,
-		modelID: modelID,
-		prompt:  systemPrompt,
+		actors:     make(map[string]*Actor),
+		max:        max,
+		dataDir:    dataDir,
+		modelID:    modelID,
+		prompt:     systemPrompt,
+		modelsFile: filepath.Join(dataDir, "models.json"),
 	}
 }
 
@@ -65,6 +69,7 @@ func (m *Manager) Create(req protocol.CreateSessionRequest) (*Actor, error) {
 	if modelID == "" {
 		modelID = m.modelID
 	}
+	m.seedAgentDir(agentDir, modelID)
 	sysPrompt := req.SystemPrompt
 	if sysPrompt == "" {
 		sysPrompt = m.prompt
@@ -212,6 +217,7 @@ func (m *Manager) Restore() int {
 			continue
 		}
 		cwd := filepath.Join(root, id, "workspace")
+		m.seedAgentDir(agentDir, m.modelID)
 		actor, err := New(Options{
 			ID:           id,
 			CWD:          cwd,
@@ -240,4 +246,71 @@ func (m *Manager) Restore() int {
 		restored++
 	}
 	return restored
+}
+
+// SetModelsFile 指定自定义的 PiG models.json（留空则用 <data>/models.json）。
+func (m *Manager) SetModelsFile(path string) {
+	m.mu.Lock()
+	m.modelsFile = path
+	m.mu.Unlock()
+}
+
+// seedAgentDir 在会话的 AgentDir 里准备 models.json。
+// PiG 每个会话有独立 AgentDir，所以 provider 配置必须随会话一起落地；
+// 否则 ollama 会退回到 api.openai.com。已有的 models.json 不会被覆盖。
+func (m *Manager) seedAgentDir(agentDir, modelID string) {
+	target := filepath.Join(agentDir, "models.json")
+	if _, err := os.Stat(target); err == nil {
+		return
+	}
+
+	m.mu.RLock()
+	modelsFile := m.modelsFile
+	m.mu.RUnlock()
+	if modelsFile != "" {
+		if b, err := os.ReadFile(modelsFile); err == nil {
+			if err := os.WriteFile(target, b, 0o600); err != nil {
+				log.Printf("seed models.json: %v", err)
+			}
+			return
+		}
+	}
+
+	provider := modelID
+	if i := strings.Index(provider, "/"); i > 0 {
+		provider = provider[:i]
+	}
+	if provider != "ollama" {
+		return
+	}
+
+	host := strings.TrimSpace(os.Getenv("OLLAMA_HOST"))
+	if host == "" {
+		host = "http://127.0.0.1:11434/v1"
+	}
+	if !strings.Contains(host, "://") {
+		host = "http://" + host
+	}
+	host = strings.TrimRight(host, "/")
+	if !strings.HasSuffix(host, "/v1") {
+		host += "/v1"
+	}
+
+	cfg := map[string]any{
+		"providers": map[string]any{
+			"ollama": map[string]any{
+				"name":    "Ollama (local)",
+				"baseUrl": host,
+				"api":     "openai-completions",
+				"apiKey":  "ollama",
+			},
+		},
+	}
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(target, b, 0o600); err != nil {
+		log.Printf("seed ollama models.json: %v", err)
+	}
 }

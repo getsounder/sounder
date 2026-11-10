@@ -140,6 +140,15 @@ func (p *Postgres) Delete(id string) error {
 	return nil
 }
 
+func (p *Postgres) DeleteByWorker(workerID, ownerID string) error {
+	_, err := p.db.Exec(
+		`DELETE FROM sessions WHERE worker_id = $1 AND ($2 = '' OR owner_id = $2)`, workerID, ownerID)
+	if err != nil {
+		return fmt.Errorf("delete sessions by worker: %w", err)
+	}
+	return nil
+}
+
 func (p *Postgres) DeleteByOwner(ownerID string) error {
 	_, err := p.db.Exec(`DELETE FROM sessions WHERE owner_id = $1`, ownerID)
 	return err

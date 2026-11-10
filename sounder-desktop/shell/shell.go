@@ -195,7 +195,11 @@ func (c *ContainerRunner) Start(ctx context.Context, workspace string) (Endpoint
 		args = append(args, "-v", c.DataDir+":/data")
 	}
 	// 用 -e KEY（不带值）让 docker 从当前环境继承，避免 key 出现在 ps 参数里。
-	for _, k := range []string{"MINIMAX_API_KEY", "MINIMAX_CN_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {
+	for _, k := range []string{
+		"MINIMAX_API_KEY", "MINIMAX_CN_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+		// 本地模型：容器里要指向 host.docker.internal，不能是 127.0.0.1。
+		"OLLAMA_HOST", "SOUNDER_MODELS_FILE",
+	} {
 		if os.Getenv(k) != "" {
 			args = append(args, "-e", k)
 		}

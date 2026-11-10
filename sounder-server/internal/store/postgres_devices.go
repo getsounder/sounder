@@ -79,6 +79,22 @@ func (p *Postgres) RenameDevice(id, userID, name string) error {
 	return nil
 }
 
+func (p *Postgres) GetDevice(id, userID string) (Device, error) {
+	const q = `
+SELECT id, user_id, worker_id, name, kind, form, platform, version, last_seen_at, created_at
+FROM devices WHERE id = $1 AND user_id = $2`
+	var d Device
+	err := p.db.QueryRow(q, id, userID).
+		Scan(&d.ID, &d.UserID, &d.WorkerID, &d.Name, &d.Kind, &d.Form, &d.Platform, &d.Version, &d.LastSeenAt, &d.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Device{}, ErrNotFound
+	}
+	if err != nil {
+		return Device{}, err
+	}
+	return d, nil
+}
+
 func (p *Postgres) DeleteDevice(id, userID string) error {
 	res, err := p.db.Exec(`DELETE FROM devices WHERE id = $1 AND user_id = $2`, id, userID)
 	if err != nil {

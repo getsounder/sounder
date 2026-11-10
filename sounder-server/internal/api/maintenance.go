@@ -71,6 +71,13 @@ func (s *Server) retryPendingDeletes(ctx context.Context) int {
 		if ok {
 			_ = s.store.Delete(sess.ID)
 			done++
+			continue
+		}
+		// Worker 超过 7 天没回来，记录永远删不掉；放弃等待，避免无限重试。
+		if time.Since(sess.UpdatedAt) > 7*24*time.Hour {
+			_ = s.store.Delete(sess.ID)
+			done++
+			log.Printf("maintenance: dropped deleting session %s (worker %s gone for 7d)", sess.ID, sess.WorkerID)
 		}
 	}
 	return done

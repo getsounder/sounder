@@ -32,12 +32,15 @@ type Store interface {
 	ListByState(state string) []Session
 	Delete(id string) error
 	DeleteByOwner(ownerID string) error
+	// DeleteByWorker 删除某个设备上的会话（设备被删除时调用，避免留下无法访问的记录）。
+	DeleteByWorker(workerID, ownerID string) error
 
 	// 设备 = 一个 Worker 运行环境（桌面 container / 桌面 process / 云端容器）。
 	EnsureDevice(d Device) (Device, error)
 	ListDevices(userID string) ([]Device, error)
 	ListAllDevices() ([]Device, error)
 	RenameDevice(id, userID, name string) error
+	GetDevice(id, userID string) (Device, error)
 	DeleteDevice(id, userID string) error
 
 	// 配额：云端设备数量与单设备规格。桌面本地设备不受 max_devices 限制。
@@ -181,6 +184,17 @@ func (m *Memory) ListByState(state string) []Session {
 		}
 	}
 	return out
+}
+
+func (m *Memory) DeleteByWorker(workerID, ownerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, s := range m.data {
+		if s.WorkerID == workerID && (ownerID == "" || s.OwnerID == ownerID) {
+			delete(m.data, id)
+		}
+	}
+	return nil
 }
 
 func (m *Memory) DeleteByOwner(ownerID string) error {
