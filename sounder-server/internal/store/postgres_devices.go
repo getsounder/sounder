@@ -20,19 +20,23 @@ func (p *Postgres) EnsureDevice(d Device) (Device, error) {
 	}
 
 	const q = `
-INSERT INTO devices (id, user_id, worker_id, name, kind, platform, version, last_seen_at, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+INSERT INTO devices (id, user_id, worker_id, name, kind, form, platform, version, last_seen_at, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 ON CONFLICT (user_id, worker_id) DO UPDATE SET
     last_seen_at = EXCLUDED.last_seen_at,
     name = CASE WHEN devices.name = '' THEN EXCLUDED.name ELSE devices.name END,
     kind = CASE WHEN EXCLUDED.kind = '' THEN devices.kind ELSE EXCLUDED.kind END,
+    form = CASE WHEN EXCLUDED.form = '' THEN devices.form ELSE EXCLUDED.form END,
     platform = CASE WHEN EXCLUDED.platform = '' THEN devices.platform ELSE EXCLUDED.platform END,
     version = CASE WHEN EXCLUDED.version = '' THEN devices.version ELSE EXCLUDED.version END
-RETURNING id, user_id, worker_id, name, kind, platform, version, last_seen_at, created_at`
+RETURNING id, user_id, worker_id, name, kind, form, platform, version, last_seen_at, created_at`
 
 	out := d
-	err := p.db.QueryRow(q, d.ID, d.UserID, d.WorkerID, d.Name, d.Kind, d.Platform, d.Version, now).
-		Scan(&out.ID, &out.UserID, &out.WorkerID, &out.Name, &out.Kind, &out.Platform, &out.Version, &out.LastSeenAt, &out.CreatedAt)
+	if out.Form == "" {
+		out.Form = "sandbox"
+	}
+	err := p.db.QueryRow(q, d.ID, d.UserID, d.WorkerID, d.Name, d.Kind, out.Form, d.Platform, d.Version, now).
+		Scan(&out.ID, &out.UserID, &out.WorkerID, &out.Name, &out.Kind, &out.Form, &out.Platform, &out.Version, &out.LastSeenAt, &out.CreatedAt)
 	if err != nil {
 		return Device{}, err
 	}
@@ -41,7 +45,7 @@ RETURNING id, user_id, worker_id, name, kind, platform, version, last_seen_at, c
 
 func (p *Postgres) ListDevices(userID string) ([]Device, error) {
 	const q = `
-SELECT id, user_id, worker_id, name, kind, platform, version, last_seen_at, created_at
+SELECT id, user_id, worker_id, name, kind, form, platform, version, last_seen_at, created_at
 FROM devices WHERE user_id = $1 ORDER BY last_seen_at DESC`
 	rows, err := p.db.Query(q, userID)
 	if err != nil {
@@ -52,7 +56,7 @@ FROM devices WHERE user_id = $1 ORDER BY last_seen_at DESC`
 	var out []Device
 	for rows.Next() {
 		var d Device
-		if err := rows.Scan(&d.ID, &d.UserID, &d.WorkerID, &d.Name, &d.Kind, &d.Platform, &d.Version, &d.LastSeenAt, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.UserID, &d.WorkerID, &d.Name, &d.Kind, &d.Form, &d.Platform, &d.Version, &d.LastSeenAt, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

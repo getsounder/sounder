@@ -21,12 +21,14 @@ CREATE TABLE IF NOT EXISTS devices (
     worker_id    TEXT NOT NULL,
     name         TEXT NOT NULL DEFAULT '',
     kind         TEXT NOT NULL DEFAULT 'cloud',
+    form         TEXT NOT NULL DEFAULT 'sandbox',
     platform     TEXT NOT NULL DEFAULT '',
     version      TEXT NOT NULL DEFAULT '',
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, worker_id)
 );
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS form TEXT NOT NULL DEFAULT 'sandbox';
 CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id, last_seen_at DESC);
 
 CREATE TABLE IF NOT EXISTS user_quotas (

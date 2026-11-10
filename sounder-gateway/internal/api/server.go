@@ -12,25 +12,29 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 
+	"github.com/getsounder/sounder-gateway/internal/auth"
 	"github.com/getsounder/sounder-gateway/internal/protocol"
 	"github.com/getsounder/sounder-gateway/internal/registry"
 	"github.com/getsounder/sounder-gateway/internal/tunnel"
 )
 
 type Server struct {
-	reg   *registry.Registry
-	token string
-	up    websocket.Upgrader
+	reg          *registry.Registry
+	token        string
+	workerSecret string
+	up           websocket.Upgrader
 }
 
-func New(reg *registry.Registry, token string) *Server {
+func New(reg *registry.Registry, token, workerSecret string) *Server {
 	return &Server{
-		reg:   reg,
-		token: token,
+		reg:          reg,
+		token:        token,
+		workerSecret: workerSecret,
 		up: websocket.Upgrader{
 			ReadBufferSize:  64 * 1024,
 			WriteBufferSize: 64 * 1024,
@@ -63,6 +67,11 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// 隧道有自己的凭证体系：管理 token 或按设备签发的 worker token。
+		if r.URL.Path == "/v1/tunnel" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer "+s.token {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
@@ -72,6 +81,24 @@ func (s *Server) auth(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleTunnel(w http.ResponseWriter, r *http.Request) {
+	// 凭证：管理 token（兼容）或某台设备专属的 worker token。
+	token := strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+	admin := s.token != "" && token == s.token
+	var device auth.WorkerToken
+	deviceOK := false
+	if !admin && s.workerSecret != "" && token != "" {
+		if dt, err := auth.VerifyWorkerToken(s.workerSecret, token); err == nil {
+			device, deviceOK = dt, true
+		}
+	}
+	if !admin && !deviceOK {
+		writeErr(w, http.StatusUnauthorized, "invalid worker token")
+		return
+	}
+
 	ws, err := s.up.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("upgrade: %v", err)
@@ -88,6 +115,12 @@ func (s *Server) handleTunnel(w http.ResponseWriter, r *http.Request) {
 	var hello protocol.Frame
 	if err := ws.ReadJSON(&hello); err != nil || hello.Kind != protocol.KindRegister || hello.WorkerID == "" {
 		_ = ws.WriteJSON(protocol.Frame{Kind: protocol.KindError, Error: "first frame must be register with workerId"})
+		_ = ws.Close()
+		return
+	}
+	// 设备 token 只能注册自己的 workerId，防止冒用别人的设备身份。
+	if deviceOK && device.WorkerID != "" && hello.WorkerID != device.WorkerID {
+		_ = ws.WriteJSON(protocol.Frame{Kind: protocol.KindError, Error: "worker token does not match workerId"})
 		_ = ws.Close()
 		return
 	}
