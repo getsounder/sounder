@@ -60,45 +60,48 @@ open http://localhost:3000
 `make up` starts eight services: `sounder-web`, `sounder-server`, `sounder-gateway`,
 `sounder-worker`, `postgres`, `redis`, `minio` and `minio-init`.
 
-The token in `.env` (`SOUNDER_TOKEN`) is used for the web UI and for gateway authentication.
+`SOUNDER_TOKEN` and `SOUNDER_WORKER_SECRET` are service-to-service credentials:
+the control plane uses the first to call the gateway, and the gateway uses both to
+authenticate cloud workers and device-key tokens. They have nothing to do with
+user login — the web UI signs in with a regular account.
 
 ## Run from source
 
 ```bash
 # terminal 1
-cd sounder-gateway && go run ./cmd/sounder-gateway -addr=127.0.0.1:9090 -token=dev
+cd sounder-gateway && go run ./cmd/sounder-gateway \
+  -addr=127.0.0.1:9090 -token=dev -worker-secret=dev
 
 # terminal 2
 cd sounder-worker && go run ./cmd/sounder-worker \
   -addr=127.0.0.1:8080 -data=/tmp/sounder -model=minimax-cn/MiniMax-M3 \
   -gateway=ws://127.0.0.1:9090/v1/tunnel -gateway-token=dev -worker-id=w1
 
-# terminal 3
+# terminal 3（-auth=false = 单租户本地模式，无需登录，身份固定为 usr_local）
 cd sounder-server && go run ./cmd/sounder-server \
   -addr=127.0.0.1:8000 -gateway=http://127.0.0.1:9090 \
-  -gateway-token=dev -token=dev
+  -gateway-token=dev -worker-secret=dev -auth=false
 ```
 
 Create a session and send a prompt:
 
 ```bash
-TOKEN=dev
 SID=$(curl -s -X POST localhost:8000/v1/sessions \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"model":"minimax-cn/MiniMax-M3"}' | jq -r .id)
+  -H 'Content-Type: application/json' \
+  -d '{"workerId":"w1","model":"minimax-cn/MiniMax-M3"}' | jq -r .id)
 
 curl -s -X POST localhost:8000/v1/sessions/$SID/prompts \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/json' \
   -d '{"message":"Use bash to run echo hello"}'
 
-curl -N localhost:8000/v1/sessions/$SID/events -H "Authorization: Bearer $TOKEN"
+curl -N localhost:8000/v1/sessions/$SID/events
 ```
 
 When a tool needs approval, `approval.requested` shows up in the stream. Approve it with:
 
 ```bash
 curl -s -X POST "localhost:8000/v1/approvals/<id>?workerId=w1" \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'Content-Type: application/json' \
   -d '{"allow":true}'
 ```
 
@@ -109,7 +112,7 @@ The whole stack can be exercised without a cloud account:
 ```bash
 docker compose up -d --build          # 8 services
 curl localhost:8000/healthz           # {"status":"ok"}
-curl -H "Authorization: Bearer dev-token" localhost:8000/v1/workers
+curl -H "Authorization: Bearer dev-token" localhost:19090/v1/workers  # 网关管理接口
 ./scripts/e2e-auth.sh                 # user system e2e: 74 assertions
 ```
 

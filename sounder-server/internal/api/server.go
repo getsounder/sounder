@@ -389,8 +389,10 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Worker 离线时先标成 deleting，由巡检在它恢复后补删，避免本地 JSONL 残留。
+	// 网关在 worker 不在线时返回 503（此时 err 仍为 nil），必须看状态码。
 	if s.gw != nil {
-		if _, _, err := s.gw.RPC(r.Context(), sess.WorkerID, http.MethodDelete, "/v1/sessions/"+sess.ID, nil); err != nil {
+		status, _, err := s.gw.RPC(r.Context(), sess.WorkerID, http.MethodDelete, "/v1/sessions/"+sess.ID, nil)
+		if err != nil || status >= http.StatusBadRequest && status != http.StatusNotFound {
 			_ = s.store.UpdateState(sess.ID, "deleting")
 			writeJSON(w, http.StatusAccepted, map[string]any{
 				"status": "pending",

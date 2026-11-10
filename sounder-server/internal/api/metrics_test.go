@@ -60,3 +60,23 @@ func TestMetricsEndpoint(t *testing.T) {
 		t.Errorf("content-type = %q", ct)
 	}
 }
+
+func TestMetricsMiddlewarePreservesFlusher(t *testing.T) {
+	st := store.NewMemory()
+	srv := New(st, store.NewMemoryAuth(), nil, nil, "", "", nil, "")
+
+	var sawFlusher bool
+	h := srv.metricsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("包装后的 ResponseWriter 丢失了 Flusher，SSE 会退化成一次性响应")
+			return
+		}
+		f.Flush()
+		sawFlusher = true
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/sessions/ses_1/events", nil))
+	if !sawFlusher {
+		t.Fatal("handler 未被调用")
+	}
+}

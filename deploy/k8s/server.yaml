@@ -41,6 +41,7 @@ spec:
             - "-addr=0.0.0.0:8000"
             - "-gateway=$(GATEWAY_URL)"
             - "-gateway-token=$(SOUNDER_TOKEN)"
+            - "-worker-secret=$(SOUNDER_WORKER_SECRET)"
             - "-store=postgres"
             - "-dsn=postgres://sounder:$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)?sslmode=disable"
             - "-auth=$(SOUNDER_AUTH)"
@@ -66,6 +67,9 @@ spec:
             - name: SOUNDER_TOKEN
               valueFrom:
                 secretKeyRef: { name: sounder-secrets, key: SOUNDER_TOKEN }
+            - name: SOUNDER_WORKER_SECRET
+              valueFrom:
+                secretKeyRef: { name: sounder-secrets, key: SOUNDER_WORKER_SECRET }
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef: { name: sounder-secrets, key: POSTGRES_PASSWORD }

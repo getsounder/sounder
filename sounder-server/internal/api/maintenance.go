@@ -66,7 +66,9 @@ func (s *Server) retryPendingDeletes(ctx context.Context) int {
 	done := 0
 	for _, sess := range pending {
 		status, _, err := s.gw.RPC(ctx, sess.WorkerID, http.MethodDelete, "/v1/sessions/"+sess.ID, nil)
-		if err == nil || status == http.StatusNotFound {
+		// 网关在 worker 离线时返回 503 但 err 为 nil，不能当成删除成功。
+		ok := err == nil && (status < http.StatusBadRequest || status == http.StatusNotFound)
+		if ok {
 			_ = s.store.Delete(sess.ID)
 			done++
 		}

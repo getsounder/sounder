@@ -96,6 +96,9 @@ services:
     user: "65534:65534"
     command:
       - "-addr=0.0.0.0:9090"
+      # 网关自己的管理 token（服务间认证，与控制面的用户登录无关）
+      - "-token=${SOUNDER_TOKEN:?set SOUNDER_TOKEN}"
+      - "-worker-secret=${SOUNDER_WORKER_SECRET:?set SOUNDER_WORKER_SECRET}"
       - "-stale=90s"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:9090/healthz"]
@@ -118,6 +121,7 @@ services:
       - "-addr=0.0.0.0:8000"
       - "-gateway=http://sounder-gateway:9090"
       - "-gateway-token=${SOUNDER_TOKEN:?set SOUNDER_TOKEN}"
+      - "-worker-secret=${SOUNDER_WORKER_SECRET:?set SOUNDER_WORKER_SECRET}"
       - "-store=postgres"
       - "-dsn=postgres://sounder:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@sounder-postgres:5432/sounder?sslmode=disable"
       - "-auth=${SOUNDER_AUTH:-true}"

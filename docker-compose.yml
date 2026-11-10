@@ -81,6 +81,8 @@ services:
         GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
     command:
       - "-addr=0.0.0.0:9090"
+      # 网关自己的管理 token（服务间认证，与控制面的用户登录无关）
+      - "-token=${SOUNDER_TOKEN:-dev-token}"
       - "-worker-secret=${SOUNDER_WORKER_SECRET:-dev-worker-secret}"
       - "-stale=90s"
     ports:
