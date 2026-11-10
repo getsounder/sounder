@@ -299,6 +299,14 @@
   .error-title { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #ff9aa5; margin-bottom: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .error-body { font-size: 12.5px; color: #ffd7db; }
   .error .retry { margin-top: 10px; font-size: 11.5px; padding: 4px 10px; }
+  .badge-pill {
+    min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+    background: #3a2a10; border: 1px solid #5c4a20; color: var(--warn);
+    font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .badge-pill:hover { background: #4a3514; border-color: #7a6229; }
+
   .approval {
     align-self: stretch; padding: 12px 14px; border-radius: 8px;
     background: #1d1810; border: 1px solid #453618; border-left: 2px solid var(--warn);
@@ -307,6 +315,28 @@
   .approval pre { margin: 8px 0 12px; padding: 9px; background: #12100b; border-radius: 6px; overflow: auto; font-size: 11px; color: #d3c5a3; }
   .approval .row { display: flex; gap: 8px; }
   .approval .row button { min-width: 76px; font-size: 12px; }
+  .approval .head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  .approval .head h4 { margin: 0; }
+  .lvl { font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .lvl.l1 { color: #ffd7a6; border-color: #5c4a20; background: #221c10; }
+  .lvl.l2 { color: #ffc2c8; border-color: #5c2630; background: #211012; }
+  .lvl.l3 { color: #d9c2ff; border-color: #4b3a6b; background: #191225; }
+  .approval details { margin: 8px 0 12px; }
+  .approval details summary { font-size: 11.5px; color: var(--muted2); cursor: pointer; }
+  .approval details pre { margin: 6px 0 0; max-height: 220px; }
+
+  .ask {
+    align-self: stretch; padding: 12px 14px; border-radius: 10px;
+    background: #111a2a; border: 1px solid #2c4066; border-left: 2px solid var(--accent);
+  }
+  .ask .q-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-bottom: 4px; }
+  .ask .q-text { font-size: 13px; margin-bottom: 10px; }
+  .ask .q-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .ask .q-opts button { font-size: 12px; padding: 5px 10px; border-radius: 7px; }
+  .ask .q-reply { display: flex; gap: 8px; }
+  .ask .q-reply input { flex: 1; font-size: 12.5px; }
+  .ask.resolved { opacity: .55; }
+  .ask .q-answer { font-size: 12.5px; color: var(--muted); }
 
   form.composer { padding: 10px max(18px, calc((100% - 840px) / 2)) 14px; border-top: 1px solid var(--line); background: var(--bg); }
   .composer-box {
@@ -434,6 +464,7 @@
     <button id="deviceChip" class="device-chip" hidden title="当前设备（点击切换）"><i id="deviceDot"></i><span class="d-name" id="deviceName">设备</span></button>
     <button id="wsChip" class="workspace-chip" hidden title="当前会话的工作区（点击复制）"></button>
     <button id="userChip" hidden title="账号">账号</button>
+    <button id="approvalBadge" class="badge-pill" hidden title="待处理的审批/提问">0</button>
     <button id="findBtn" class="icon-btn" title="在会话内搜索（⌘F）" aria-label="搜索">⌕</button>
     <button id="settingsBtn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
     <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
@@ -639,6 +670,7 @@ const state = {
   devices: [],
   device: params.get("device") || "",
   quota: null,
+  approvals: new Set(),
   admin: false,
   gatewayUrl: "",
   capacity: 0,
@@ -2100,30 +2132,111 @@ function renderEvent(evt) {
   addEl("event", esc(type) + (p && Object.keys(p).length ? " · " + esc(JSON.stringify(p).slice(0, 160)) : ""));
 }
 
-function renderApproval(p) {
-  const box = document.createElement("div");
-  box.className = "approval";
-  box.innerHTML = `
-    <h4>需要审批 · ${esc(p.tool || "")} (${esc(p.level || "")})</h4>
-    ${p.reason ? `<div style="font-size:12px;color:#d8c9a0">${esc(p.reason)}</div>` : ""}
-    <pre>${esc(JSON.stringify(p.args || {}, null, 2))}</pre>
-    <div class="row">
-      <button class="primary" data-allow="1">允许</button>
-      <button data-allow="0">拒绝</button>
-    </div>`;
-  box.querySelectorAll("button").forEach((btn) => {
-    btn.onclick = async () => {
-      btn.disabled = true;
-      try {
-        await api(`/v1/approvals/${encodeURIComponent(p.approvalId)}?workerId=${encodeURIComponent(state.current.workerId)}`, {
-          method: "POST",
-          body: JSON.stringify({ allow: btn.dataset.allow === "1" }),
-        });
-        box.querySelectorAll("button").forEach((b) => (b.disabled = true));
-        box.style.opacity = ".6";
-      } catch (e) { showError(e); }
-    };
+const LEVEL_LABEL = { l0: "只读", l1: "写入", l2: "执行", l3: "网络", question: "提问" };
+
+function updateApprovalBadge() {
+  const badge = $("approvalBadge");
+  const n = state.approvals.size;
+  badge.hidden = n === 0;
+  badge.textContent = String(n);
+  badge.title = n ? `${n} 个待处理的审批/提问` : "待处理的审批/提问";
+}
+
+function resolveApproval(id) {
+  state.approvals.delete(id);
+  updateApprovalBadge();
+}
+
+async function answerApproval(approvalId, allow, reason) {
+  return api(`/v1/approvals/${encodeURIComponent(approvalId)}?workerId=${encodeURIComponent(state.current?.workerId || "")}`, {
+    method: "POST",
+    body: JSON.stringify({ allow, reason }),
   });
+}
+
+function renderApproval(p) {
+  const isQuestion = p.tool === "ask_user" || p.level === "question";
+  const approvalId = p.approvalId;
+  if (approvalId) {
+    state.approvals.add(approvalId);
+    updateApprovalBadge();
+  }
+
+  const box = document.createElement("div");
+  if (isQuestion) {
+    box.className = "ask";
+    const options = Array.isArray(p.args?.options) ? p.args.options : [];
+    box.innerHTML =
+      `<div class="q-label">Agent 想确认一下</div>` +
+      `<div class="q-text">${esc(p.reason || "")}</div>` +
+      (options.length ? `<div class="q-opts">${options.map((o) => `<button type="button" data-opt="${esc(o)}">${esc(o)}</button>`).join("")}</div>` : "") +
+      `<div class="q-reply"><input type="text" placeholder="输入回答…"><button class="primary" type="button" data-send="1">回答</button></div>`;
+
+    const input = box.querySelector("input");
+    const finish = async (text, btn) => {
+      if (!text) return;
+      box.querySelectorAll("button, input").forEach((el) => (el.disabled = true));
+      try {
+        await answerApproval(approvalId, true, text);
+        box.classList.add("resolved");
+        box.querySelector(".q-reply")?.remove();
+        box.querySelector(".q-opts")?.remove();
+        const answered = document.createElement("div");
+        answered.className = "q-answer";
+        answered.textContent = "已回答：" + text;
+        box.appendChild(answered);
+      } catch (e) {
+        showError(e);
+        box.querySelectorAll("button, input").forEach((el) => (el.disabled = false));
+      } finally {
+        if (approvalId) resolveApproval(approvalId);
+        if (btn) btn.disabled = false;
+      }
+    };
+    box.querySelectorAll("[data-opt]").forEach((btn) => {
+      btn.onclick = () => finish(btn.dataset.opt, btn);
+    });
+    box.querySelector("[data-send]").onclick = () => finish(input.value.trim(), box.querySelector("[data-send]"));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); finish(input.value.trim(), box.querySelector("[data-send]")); }
+    });
+  } else {
+    box.className = "approval";
+    const lvl = String(p.level || "").toLowerCase();
+    box.innerHTML =
+      `<div class="head"><h4>需要审批 · ${esc(p.tool || "")}</h4>` +
+      `<span class="lvl ${/^l[123]$/.test(lvl) ? lvl : ""}">${esc(LEVEL_LABEL[lvl] || p.level || "未知")}</span></div>` +
+      (p.reason ? `<div style="font-size:12px;color:#d8c9a0">${esc(p.reason)}</div>` : "") +
+      `<details><summary>查看参数</summary><pre>${esc(JSON.stringify(p.args || {}, null, 2))}</pre></details>` +
+      `<div class="row"><button class="primary" data-allow="1">允许</button><button data-allow="0">拒绝</button></div>`;
+
+    box.querySelectorAll("button").forEach((btn) => {
+      btn.onclick = async () => {
+        const allow = btn.dataset.allow === "1";
+        let reason = "";
+        if (!allow) {
+          const typed = prompt("拒绝原因（可留空）", "");
+          if (typed === null) return;
+          reason = typed;
+        }
+        box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        try {
+          await answerApproval(approvalId, allow, reason);
+          box.style.opacity = ".6";
+          const note = document.createElement("div");
+          note.className = "event";
+          note.textContent = allow ? "已允许" : "已拒绝" + (reason ? "：" + reason : "");
+          box.appendChild(note);
+        } catch (e) {
+          showError(e);
+          box.querySelectorAll("button").forEach((b) => (b.disabled = false));
+        } finally {
+          if (approvalId) resolveApproval(approvalId);
+        }
+      };
+    });
+  }
+
   logEl().appendChild(box);
   scrollToBottom();
 }
