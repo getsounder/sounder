@@ -35,8 +35,11 @@ go run . -mode=container \
 - 界面顶栏设备 chip 可以「新建设备」（再拉一个容器）、切换、改名、删除
 - 切换设备 = 让对应容器启动并重载到它的 endpoint（URL 带 `device=<id>`）
 - 首台设备复用旧版的单容器数据目录，升级不会丢会话
+- 只传 `-server` 时，窗口直接连服务端，首屏是登录/注册；登录成功后界面会把本机设备
+  自动登记到控制面（`publishLocalDevices`）。调试时可用 `-token` 预置登录态，省掉交互。
 - 传了 `-server` + `-token` 时，设备启动后会：
-  1. 以 `-gateway` 连上网关（容器内自动把 127.0.0.1 换成 host.docker.internal）
+  1. 以 `-gateway` 连上网关（留空则从 `/v1/meta.gatewayUrl` 读取；容器内自动把
+     127.0.0.1 换成 host.docker.internal）
   2. 用 `worker-id=<设备 id>`、`worker-kind=desktop` 注册隧道
   3. 调 `POST /v1/devices` 登记，云端/移动端据此看到这台设备及其在线状态
 

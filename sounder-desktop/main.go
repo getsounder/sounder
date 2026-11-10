@@ -2,11 +2,17 @@ package main
 
 import (
 	"embed"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"net/url"
+	"os"
 	"runtime"
+	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -24,10 +30,18 @@ func main() {
 	workspace := flag.String("workspace", "", "工作区目录（默认 home）")
 	apiBase := flag.String("api", "", "移动端：云端 sounder-server 地址，如 https://sounder.example.com")
 	apiToken := flag.String("token", "", "访问 token：移动端直连控制面，或桌面端登记设备用")
-	server := flag.String("server", "", "可选：控制面地址；设置后本机设备会登记到服务端")
-	gateway := flag.String("gateway", "", "可选：网关隧道地址，如 ws://127.0.0.1:19090/v1/tunnel")
-	gatewayToken := flag.String("gateway-token", "", "可选：网关 Bearer token")
+	server := flag.String("server", os.Getenv("SOUNDER_SERVER"), "控制面地址；设置后窗口直接连服务端并登记本机设备")
+	gateway := flag.String("gateway", os.Getenv("SOUNDER_GATEWAY"), "网关隧道地址；留空则从控制面的 /v1/meta 读取")
+	gatewayToken := flag.String("gateway-token", os.Getenv("SOUNDER_GATEWAY_TOKEN"), "网关 Bearer token")
 	flag.Parse()
+
+	// 没显式给网关地址时，先问一下控制面（/v1/meta.gatewayUrl），再创建 Service。
+	if *gateway == "" && *server != "" {
+		if gw := fetchGatewayURL(*server); gw != "" {
+			*gateway = gw
+			log.Printf("gateway from %s: %s", *server, gw)
+		}
+	}
 
 	// 移动端不跑本地 Worker：iOS 禁止 fork 子进程，Android 也不适合常驻。
 	mobile := runtime.GOOS == "ios" || runtime.GOOS == "android"
@@ -52,12 +66,20 @@ func main() {
 		target = fmt.Sprintf("/?api=%s&token=%s&mode=mobile",
 			url.QueryEscape(*apiBase), url.QueryEscape(*apiToken))
 	} else {
+		// 本机设备始终启动：即使连了控制面，它也是这台机器上的执行环境。
 		ep, err := svc.StartWorker(*workspace)
 		if err != nil {
 			// 启动失败不退出：界面会显示原因，用户可以切换模式重试。
 			log.Printf("worker start failed: %v", err)
 		}
-		if ep.BaseURL != "" {
+		switch {
+		case *server != "":
+			// 连控制面：窗口走服务端，登录后由界面把本机设备登记上去。
+			target = fmt.Sprintf("/?api=%s&mode=remote", url.QueryEscape(*server))
+			if *apiToken != "" {
+				target += "&token=" + url.QueryEscape(*apiToken)
+			}
+		case ep.BaseURL != "":
 			target = fmt.Sprintf("/?api=%s&token=%s&mode=%s&device=%s",
 				url.QueryEscape(ep.BaseURL), url.QueryEscape(ep.Token), url.QueryEscape(ep.Mode), url.QueryEscape(ep.DeviceID))
 		}
@@ -100,4 +122,24 @@ func main() {
 	if runErr != nil {
 		log.Fatal(runErr)
 	}
+}
+
+// fetchGatewayURL 从控制面的 /v1/meta 取网关隧道地址，省得客户端再配一遍。
+func fetchGatewayURL(server string) string {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(strings.TrimRight(server, "/") + "/v1/meta")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var meta struct {
+		GatewayURL string `json:"gatewayUrl"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<10)).Decode(&meta); err != nil {
+		return ""
+	}
+	return meta.GatewayURL
 }

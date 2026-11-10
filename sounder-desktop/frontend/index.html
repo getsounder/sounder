@@ -527,7 +527,8 @@ const params = new URLSearchParams(location.search);
 const trimBase = (v) => String(v || "").trim().replace(/\/+$/, "");
 // Wails 壳（桌面/移动端）若没有 api query，允许用户手动配置云端地址。
 // Android 的 Wails 运行时不会应用窗口 URL 的 query，因此这里不依赖 mode 参数。
-const isWailsShell = location.hostname === "wails.localhost";
+// 桌面端页面是 wails://wails/...，hostname 不一定是 wails.localhost；按协议判断更稳。
+const isWailsShell = location.hostname === "wails.localhost" || location.protocol === "wails:";
 const isMobileShell = params.get("mode") === "mobile" || isWailsShell;
 const localWorkerMode = params.get("mode") === "container" || params.get("mode") === "process";
 const isNativeShell = isMobileShell || Boolean(window.__SOUNDER_NATIVE__);
@@ -747,8 +748,36 @@ function updateUserUI() {
 async function afterLogin() {
   await refreshMe();
   showAuth(false);
+  await publishLocalDevices();
   await loadDevices();
   await loadSessions();
+}
+
+// 桌面端把本机设备登记到控制面，Web/移动端就能看到并切过来。
+async function publishLocalDevices() {
+  if (!isWailsShell) return;
+  try {
+    const list = await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.ListDevices");
+    if (!Array.isArray(list)) return;
+    for (const d of list) {
+      try {
+        await api("/v1/devices", {
+          method: "POST",
+          body: JSON.stringify({
+            kind: d.kind,
+            workerId: d.id,
+            name: d.name,
+            platform: d.platform || "",
+            version: d.version || "",
+          }),
+        });
+      } catch (_) {
+        /* 单台失败不影响其它设备 */
+      }
+    }
+  } catch (_) {
+    /* 没有原生设备接口时忽略 */
+  }
 }
 
 async function bootstrap() {
@@ -771,6 +800,7 @@ async function bootstrap() {
   try {
     await refreshMe();
     showAuth(false);
+    await publishLocalDevices();
     await loadDevices();
     await loadSessions();
   } catch (e) {
