@@ -168,15 +168,20 @@ func (s *Service) StopWorker() error {
 // ---------- container ----------
 
 type ContainerRunner struct {
-	Image     string
-	Container string
-	DataDir   string
-	Model     string
-	Extra     []string // 追加给 worker 的参数（隧道、worker-id 等）
+	Image         string
+	Container     string
+	DataDir       string
+	Model         string
+	Extra         []string // 追加给 worker 的参数（隧道、worker-id 等）
+	NoBind        bool     // computer 形态：数据在容器里，不挂载 /data
+	TokenOverride string   // computer 原地重建时复用原来的 token
 }
 
 func (c *ContainerRunner) Start(ctx context.Context, workspace string) (Endpoint, error) {
-	token := randomToken()
+	token := c.TokenOverride
+	if token == "" {
+		token = randomToken()
+	}
 
 	_ = exec.CommandContext(ctx, "docker", "rm", "-f", c.Container).Run()
 
@@ -184,8 +189,10 @@ func (c *ContainerRunner) Start(ctx context.Context, workspace string) (Endpoint
 		"run", "-d", "--name", c.Container,
 		"-p", "127.0.0.1::8080",
 		"-v", workspace + ":/workspace",
-		"-v", c.DataDir + ":/data",
 		"-e", "PIG_HOME=/data",
+	}
+	if !c.NoBind {
+		args = append(args, "-v", c.DataDir+":/data")
 	}
 	// 用 -e KEY（不带值）让 docker 从当前环境继承，避免 key 出现在 ps 参数里。
 	for _, k := range []string{"MINIMAX_API_KEY", "MINIMAX_CN_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"} {

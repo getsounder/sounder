@@ -391,7 +391,8 @@
     <div class="dm-head"><span class="dm-title">设备</span><span class="dm-quota" id="deviceQuota"></span></div>
     <ul id="deviceList"></ul>
     <div class="dm-foot">
-      <button id="addCloudDevice" type="button">＋ 添加云端设备</button>
+      <button id="addComputer" type="button">＋ Computer</button>
+      <button id="addSandbox" type="button">＋ Sandbox</button>
     </div>
   </div>
   <main>
@@ -563,6 +564,7 @@ const state = {
   devices: [],
   device: params.get("device") || "",
   quota: null,
+  gatewayUrl: "",
   capacity: 0,
   used: 0,
   current: null,
@@ -759,6 +761,17 @@ async function publishLocalDevices() {
   try {
     const list = await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.ListDevices");
     if (!Array.isArray(list)) return;
+
+    // 网关地址由服务端下发，桌面不用自己配。
+    let gateway = state.gatewayUrl;
+    if (!gateway) {
+      try {
+        const meta = await api("/v1/meta");
+        gateway = meta.gatewayUrl || "";
+        state.gatewayUrl = gateway;
+      } catch (_) {}
+    }
+
     for (const d of list) {
       try {
         await api("/v1/devices", {
@@ -773,6 +786,20 @@ async function publishLocalDevices() {
         });
       } catch (_) {
         /* 单台失败不影响其它设备 */
+      }
+      // 用这台设备专属的 worker token 重连隧道，不再共享管理 token。
+      if (gateway) {
+        try {
+          const tk = await api("/v1/worker-tokens", {
+            method: "POST",
+            body: JSON.stringify({ workerId: d.id, kind: d.kind }),
+          });
+          if (tk && tk.token) {
+            await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.SetDeviceTunnel", d.id, gateway, tk.token);
+          }
+        } catch (_) {
+          /* 拿不到 token 就继续用启动参数里的凭据 */
+        }
       }
     }
   } catch (_) {
@@ -965,7 +992,7 @@ function renderHome() {
     btn.type = "button";
     btn.className = "primary";
     btn.textContent = "＋ 添加云端设备";
-    btn.onclick = createCloudDevice;
+    btn.onclick = () => createDevice("sandbox");
     box.appendChild(btn);
     const hint = document.createElement("p");
     hint.textContent = state.quota
@@ -1705,7 +1732,6 @@ async function loadDevices() {
 
 function renderDeviceMenu() {
   const ul = $("deviceList");
-  $("addCloudDevice").textContent = localWorkerMode ? "＋ 新建设备" : "＋ 添加云端设备";
   if (localWorkerMode) {
     $("deviceQuota").textContent = `本机 ${state.devices.filter((d) => d.status === "online").length}/${state.devices.length} 运行中`;
   }
@@ -1725,15 +1751,21 @@ function renderDeviceMenu() {
     const li = document.createElement("li");
     li.className = d.workerId === state.device ? "on" : "";
     const kind = KIND_LABELS[d.kind] || d.kind || "设备";
+    const form = d.form === "computer" ? "Computer" : d.form === "sandbox" ? "Sandbox" : "";
     const load = d.capacity ? `${d.used}/${d.capacity}` : "";
     li.innerHTML = `<i class="dot ${d.status === "online" ? "on" : ""}"></i>` +
       `<span class="dm-body"><span class="dm-name">${esc(d.name || d.workerId)}</span>` +
-      `<span class="dm-sub">${esc([kind, d.status === "online" ? "在线" : "离线", load].filter(Boolean).join(" · "))}</span></span>`;
+      `<span class="dm-sub">${esc([kind, form, d.status === "online" ? "在线" : "已关机", load].filter(Boolean).join(" · "))}</span></span>`;
     li.querySelector("i.dot").className = "dot" + (d.status === "online" ? " on" : "");
     li.onclick = () => selectDevice(d.workerId);
 
     const acts = document.createElement("span");
     acts.className = "dm-acts";
+    const power = document.createElement("button");
+    power.type = "button";
+    const online = d.status === "online";
+    power.textContent = online ? "关机" : "开机";
+    power.onclick = (e) => { e.stopPropagation(); toggleDevicePower(d, online); };
     const rename = document.createElement("button");
     rename.type = "button";
     rename.textContent = "改名";
@@ -1742,7 +1774,7 @@ function renderDeviceMenu() {
     del.type = "button";
     del.textContent = "移除";
     del.onclick = (e) => { e.stopPropagation(); removeDevice(d); };
-    acts.append(rename, del);
+    acts.append(power, rename, del);
     li.appendChild(acts);
     ul.appendChild(li);
   }
@@ -1773,34 +1805,56 @@ async function selectDevice(workerId) {
   loadSessions().catch(showError);
 }
 
-async function createCloudDevice() {
-  const btn = $("addCloudDevice");
+async function toggleDevicePower(d, online) {
+  try {
+    if (localWorkerMode) {
+      if (online) {
+        await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.StopDevice", d.id);
+      } else {
+        await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.StartDevice", d.id);
+      }
+      await loadDevices();
+      toast(online ? "已关机" : "已开机");
+      return;
+    }
+    await api(`/v1/devices/${encodeURIComponent(d.id)}/${online ? "stop" : "start"}`, { method: "POST" });
+    toast(online ? "正在关机…" : "正在开机…");
+    setTimeout(() => loadDevices().catch(() => {}), 1500);
+    setTimeout(() => loadDevices().catch(() => {}), 5000);
+  } catch (e) {
+    toast(e.message || "操作失败");
+  }
+}
+
+async function createDevice(form) {
+  const btn = form === "computer" ? $("addComputer") : $("addSandbox");
+  const label = btn.textContent;
   if (localWorkerMode) {
     btn.disabled = true;
     btn.textContent = "创建中…";
     try {
-      const dev = await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.AddDevice", "");
+      const dev = await wailsCall("github.com/getsounder/sounder-desktop/shell.Service.AddDeviceWithForm", "", form);
       const mode = dev.kind === "desktop-process" ? "process" : "container";
       location.href = `/?api=${encodeURIComponent(dev.baseUrl)}&token=${encodeURIComponent(dev.token)}&mode=${mode}&device=${encodeURIComponent(dev.id)}`;
     } catch (e) {
       toast(e.message || "创建失败");
       btn.disabled = false;
-      btn.textContent = "＋ 新建设备";
+      btn.textContent = label;
     }
     return;
   }
   btn.disabled = true;
   btn.textContent = "创建中…";
   try {
-    const d = await api("/v1/devices", { method: "POST", body: JSON.stringify({ kind: "cloud" }) });
+    const d = await api("/v1/devices", { method: "POST", body: JSON.stringify({ kind: "cloud", form }) });
     await loadDevices();
     selectDevice(d.workerId || d.workerID || state.device);
-    toast("已添加设备");
+    toast("已创建 " + (form === "computer" ? "Computer" : "Sandbox"));
   } catch (e) {
-    toast(e.message || "添加失败");
+    toast(e.message || "创建失败");
   } finally {
     btn.disabled = false;
-    btn.textContent = "＋ 添加云端设备";
+    btn.textContent = label;
   }
 }
 
@@ -1860,7 +1914,8 @@ $("deviceChip").onclick = (e) => {
   menu.style.top = Math.round(r.bottom + 6) + "px";
   menu.style.left = Math.round(Math.min(r.left, window.innerWidth - width - 12)) + "px";
 };
-$("addCloudDevice").onclick = createCloudDevice;
+$("addComputer").onclick = () => createDevice("computer");
+$("addSandbox").onclick = () => createDevice("sandbox");
 document.addEventListener("click", (e) => {
   if (!e.target.closest("#deviceMenu") && !e.target.closest("#deviceChip")) {
     $("deviceMenu").hidden = true;

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,6 +25,7 @@ type Device struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Kind      string    `json:"kind"` // desktop-container | desktop-process
+	Form      string    `json:"form"` // computer（提交镜像）| sandbox（挂载目录）
 	Container string    `json:"container,omitempty"`
 	DataDir   string    `json:"dataDir"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -38,6 +40,10 @@ type Device struct {
 type deviceRuntime struct {
 	Device
 	runner Runner
+
+	// 控制面登录后下发的隧道参数（优先于启动参数）
+	tunnelGateway string
+	tunnelToken   string
 }
 
 type devicesFile struct {
@@ -73,6 +79,9 @@ func (s *Service) loadDevices() error {
 				if dc.Status == "" {
 					dc.Status = "stopped"
 				}
+				if dc.Form == "" {
+					dc.Form = "sandbox"
+				}
 				s.devices[dc.ID] = &deviceRuntime{Device: dc}
 				s.order = append(s.order, dc.ID)
 			}
@@ -86,6 +95,7 @@ func (s *Service) loadDevices() error {
 			ID:        id,
 			Name:      "本机设备",
 			Kind:      s.deviceKind(),
+			Form:      "sandbox",
 			Container: s.containerName(id),
 			DataDir:   s.cfg.DataDir,
 			CreatedAt: time.Now(),
@@ -175,6 +185,11 @@ func (s *Service) ListDevices() ([]Device, error) {
 
 // AddDevice 新建一个本机设备（容器/进程），并立即启动。
 func (s *Service) AddDevice(name string) (Device, error) {
+	return s.AddDeviceWithForm(name, "sandbox")
+}
+
+// AddDeviceWithForm 新建一台设备；form=computer 时关机走镜像提交。
+func (s *Service) AddDeviceWithForm(name, form string) (Device, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.loadDevices(); err != nil {
@@ -186,10 +201,14 @@ func (s *Service) AddDevice(name string) (Device, error) {
 	if name == "" {
 		name = fmt.Sprintf("本机设备 %d", len(s.order)+1)
 	}
+	if form != "computer" {
+		form = "sandbox"
+	}
 	dev := Device{
 		ID:        id,
 		Name:      name,
 		Kind:      s.deviceKind(),
+		Form:      form,
 		Container: s.containerName(id),
 		DataDir:   filepath.Join(s.cfg.DataDir, "devices", id),
 		CreatedAt: time.Now(),
@@ -232,6 +251,33 @@ func (s *Service) startDeviceLocked(d *deviceRuntime) (Device, error) {
 		d.Status = "running"
 		return d.Device, nil
 	}
+
+	// computer 形态：容器还在就原地启动，不重建（状态在容器/提交的镜像里）。
+	if d.Kind == "desktop-container" && d.Form == "computer" && containerExists(d.Container) {
+		if !containerRunning(d.Container) {
+			if out, err := exec.Command("docker", "start", d.Container).CombinedOutput(); err != nil {
+				return Device{}, fmt.Errorf("docker start: %v: %s", err, strings.TrimSpace(string(out)))
+			}
+		}
+		base, ok := s.containerEndpoint(d.Container)
+		if !ok {
+			return Device{}, fmt.Errorf("容器已启动但没有端口映射")
+		}
+		token := containerToken(d.Container)
+		ep := Endpoint{BaseURL: base, Token: token, Mode: s.cfg.Mode, DeviceID: d.ID}
+		if err := waitHealthy(context.Background(), ep); err != nil {
+			return Device{}, err
+		}
+		// 用一个只负责停止的 runner 占位，避免下次又当新设备处理。
+		d.runner = &ContainerRunner{Container: d.Container, NoBind: true}
+		d.BaseURL = base
+		d.Token = token
+		d.Status = "running"
+		s.active = d.ID
+		s.ep = ep
+		go s.registerDevice(d.Device)
+		return d.Device, nil
+	}
 	if err := os.MkdirAll(d.DataDir, 0o755); err != nil {
 		return Device{}, err
 	}
@@ -241,12 +287,22 @@ func (s *Service) startDeviceLocked(d *deviceRuntime) (Device, error) {
 	if d.Kind == "desktop-process" {
 		runner = &ProcessRunner{Binary: s.cfg.Binary, DataDir: d.DataDir, Model: s.cfg.Model, Extra: extra}
 	} else {
+		image := s.cfg.Image
+		noBind := false
+		if d.Form == "computer" {
+			// 有提交过的镜像就用它，状态原地恢复。
+			if committed := committedDeviceImage(d.ID); imageExists(committed) {
+				image = committed
+			}
+			noBind = true
+		}
 		runner = &ContainerRunner{
-			Image:     s.cfg.Image,
+			Image:     image,
 			Container: d.Container,
 			DataDir:   d.DataDir,
 			Model:     s.cfg.Model,
 			Extra:     extra,
+			NoBind:    noBind,
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -276,12 +332,21 @@ func (s *Service) StopDevice(id string) error {
 	if !ok {
 		return fmt.Errorf("device not found")
 	}
-	if d.runner == nil {
-		return nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	err := d.runner.Stop(ctx)
+	var err error
+	if d.Kind == "desktop-container" && d.Form == "computer" {
+		// 关机前先把容器提交成镜像，再停机（容器保留）。
+		img := committedDeviceImage(id)
+		if out, cerr := exec.CommandContext(ctx, "docker", "commit", d.Container, img).CombinedOutput(); cerr != nil {
+			log.Printf("commit %s failed: %v: %s", d.Container, cerr, strings.TrimSpace(string(out)))
+		}
+		if out, serr := exec.CommandContext(ctx, "docker", "stop", d.Container).CombinedOutput(); serr != nil && containerRunning(d.Container) {
+			log.Printf("stop %s failed: %v: %s", d.Container, serr, strings.TrimSpace(string(out)))
+		}
+	} else if d.runner != nil {
+		err = d.runner.Stop(ctx)
+	}
 	d.runner = nil
 	d.Status = "stopped"
 	d.BaseURL = ""
@@ -322,6 +387,41 @@ func (s *Service) RemoveDevice(id string) error {
 		s.ep = Endpoint{}
 	}
 	return s.saveDevicesLocked()
+}
+
+// SetDeviceTunnel 用控制面下发的设备 token 重新拉起设备，
+// 让隧道凭据从"共享管理 token"换成"这台设备专属的 token"。
+func (s *Service) SetDeviceTunnel(id, gateway, token string) (Device, error) {
+	s.mu.Lock()
+	if err := s.loadDevices(); err != nil {
+		s.mu.Unlock()
+		return Device{}, err
+	}
+	d, ok := s.devices[id]
+	if !ok {
+		s.mu.Unlock()
+		return Device{}, fmt.Errorf("device not found")
+	}
+	changed := d.tunnelGateway != gateway || d.tunnelToken != token
+	d.tunnelGateway = gateway
+	d.tunnelToken = token
+	if !changed && d.runner != nil {
+		dev := d.Device
+		s.mu.Unlock()
+		return dev, nil
+	}
+	// 需要重连隧道：先停掉再按新参数启动。
+	if d.runner != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_ = d.runner.Stop(ctx)
+		cancel()
+		d.runner = nil
+		d.BaseURL = ""
+		d.Token = ""
+	}
+	dev, err := s.startDeviceLocked(d)
+	s.mu.Unlock()
+	return dev, err
 }
 
 // RenameDevice 修改设备显示名。
@@ -380,6 +480,9 @@ func (s *Service) workerExtraArgs(d *deviceRuntime) []string {
 		return nil
 	}
 	gw := s.cfg.Gateway
+	if d.tunnelGateway != "" {
+		gw = d.tunnelGateway
+	}
 	// 容器里的 127.0.0.1 是容器自己；桌面容器要访问宿主机上的网关。
 	if d.Kind != "desktop-process" {
 		gw = strings.ReplaceAll(gw, "127.0.0.1", "host.docker.internal")
@@ -387,8 +490,12 @@ func (s *Service) workerExtraArgs(d *deviceRuntime) []string {
 	}
 	kind := "desktop"
 	args := []string{"-gateway=" + gw, "-worker-id=" + d.ID, "-worker-kind=" + kind}
-	if s.cfg.GatewayToken != "" {
-		args = append(args, "-gateway-token="+s.cfg.GatewayToken)
+	token := s.cfg.GatewayToken
+	if d.tunnelToken != "" {
+		token = d.tunnelToken
+	}
+	if token != "" {
+		args = append(args, "-gateway-token="+token)
 	}
 	return args
 }
@@ -423,4 +530,34 @@ func (s *Service) registerDevice(d Device) {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		fmt.Printf("register device %s failed: %s %s\n", d.ID, resp.Status, strings.TrimSpace(string(b)))
 	}
+}
+
+// committedDeviceImage 是 computer 形态设备的提交镜像。
+func committedDeviceImage(id string) string {
+	return "sounder-device-" + strings.TrimPrefix(id, "dev_") + ":latest"
+}
+
+func containerExists(name string) bool {
+	if name == "" {
+		return false
+	}
+	return exec.Command("docker", "inspect", "-f", "{{.Id}}", name).Run() == nil
+}
+
+// containerToken 从已存在容器的启动参数里取回 worker token（computer 原地启动要复用）。
+func containerToken(name string) string {
+	out, err := exec.Command("docker", "inspect", "-f", `{{join .Config.Cmd " "}}`, name).Output()
+	if err != nil {
+		return ""
+	}
+	for _, f := range strings.Fields(string(out)) {
+		if strings.HasPrefix(f, "-token=") {
+			return strings.TrimPrefix(f, "-token=")
+		}
+	}
+	return ""
+}
+
+func imageExists(tag string) bool {
+	return exec.Command("docker", "image", "inspect", tag).Run() == nil
 }

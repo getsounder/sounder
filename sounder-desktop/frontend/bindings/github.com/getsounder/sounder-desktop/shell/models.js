@@ -38,6 +38,14 @@ export class Device {
              */
             this["kind"] = "";
         }
+        if (!("form" in $$source)) {
+            /**
+             * computer（提交镜像）| sandbox（挂载目录）
+             * @member
+             * @type {string}
+             */
+            this["form"] = "";
+        }
         if (/** @type {any} */(false)) {
             /**
              * @member
