@@ -426,6 +426,7 @@
           <textarea id="prompt" rows="1" placeholder="描述你要 Agent 做的事…" disabled></textarea>
           <div class="composer-bar">
             <button id="modelChip" class="model-chip" type="button" title="默认模型（点击修改）">默认模型</button>
+            <button id="exportBtn" class="model-chip" type="button" title="导出为 Markdown">导出</button>
             <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
             <div class="composer-actions">
               <button id="stopBtn" type="button" hidden>停止</button>
@@ -1590,6 +1591,49 @@ function updateSessionChrome() {
   mc.title = model ? model + "（点击修改默认模型）" : "未设置默认模型（点击修改）";
 }
 
+// 把当前会话导出成 Markdown（走 history 接口，云端/本地 Worker 都适用）。
+async function exportSession() {
+  if (!state.current) return;
+  try {
+    const data = await api(`/v1/sessions/${encodeURIComponent(state.current.id)}/history?limit=500`);
+    const msgs = data.messages || [];
+    if (!msgs.length) {
+      toast("这段会话还没有消息");
+      return;
+    }
+    const title = sessionTitle(state.current);
+    const lines = [
+      `# ${title}`,
+      "",
+      `- 会话：${state.current.id}`,
+      `- 模型：${state.current.model || "—"}`,
+      `- 导出时间：${new Date().toLocaleString("zh-CN")}`,
+      "",
+    ];
+    for (const m of msgs) {
+      if (m.role === "user") {
+        lines.push("## 你", "", m.text || "", "");
+      } else if (m.role === "assistant") {
+        lines.push("## Agent", "", m.text || "", "");
+      } else if (m.role === "toolResult") {
+        lines.push(`> ${m.tool || "tool"} · ${m.isError ? "失败" : "完成"}${m.text ? "：" + String(m.text).slice(0, 200) : ""}`, "");
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = title.replace(/[\\/:*?"<>|]/g, "_") + ".md";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("已导出 Markdown");
+  } catch (e) {
+    toast(e.message || "导出失败");
+  }
+}
+
 function updateJump() {
   const btn = $("jumpBottom");
   if (btn) btn.hidden = atBottom();
@@ -2043,6 +2087,7 @@ document.addEventListener("click", (e) => {
 
 $("settingsBtn").onclick = openSettings;
 $("modelChip").onclick = openSettings;
+$("exportBtn").onclick = exportSession;
 $("jumpBottom").onclick = () => { scrollToBottom(); updateJump(); };
 $("wsChip").onclick = async () => {
   const p = $("wsChip").dataset.path;
