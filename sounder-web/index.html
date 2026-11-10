@@ -454,12 +454,6 @@
       <div class="rowbtns"><button class="primary" id="authSubmit">登录</button></div>
       <div style="margin-top:10px;text-align:right"><button type="button" class="link" id="forgotBtn">忘记密码？</button></div>
     </div>
-    <div class="sep">或</div>
-    <details>
-      <summary>使用访问 token（兼容模式）</summary>
-      <div class="field" style="margin-top:10px"><input id="token" type="password" placeholder="legacy token"></div>
-      <button type="button" id="applyToken">使用 token</button>
-    </details>
   </div>
 </div>
 
@@ -651,11 +645,6 @@ function persistToken(token, persist = state.persistToken) {
   if (persist && state.token) localStorage.setItem("sounder.token", state.token);
   else localStorage.removeItem("sounder.token");
 }
-$("token").value = state.token;
-$("applyToken").onclick = async () => {
-  persistToken($("token").value.trim(), true);
-  await bootstrap();
-};
 
 function showAuth(show) {
   $("authModal").hidden = !show;
@@ -704,7 +693,7 @@ async function loadProviders() {
   $("localForm").hidden = !data.local;
   const hasProviders = state.providers.length > 0;
   if (!data.local && !hasProviders) {
-    $("authSub").textContent = "此服务未启用账号系统，请在下方使用访问 token。";
+    $("authSub").textContent = "此服务未启用账号系统，无法登录。";
   } else if (hasProviders) {
     $("authSub").textContent = "使用邮箱密码，或 Google / GitHub 账号。";
   } else if (data.registration) {
