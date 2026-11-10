@@ -1,13 +1,19 @@
 # 桌面「本地容器」与云端 K8s 使用同一镜像 digest。
 FROM golang:1.27.3 AS build
 ARG GOPROXY=https://proxy.golang.org,direct
+ARG VERSION=dev
+ARG COMMIT=
 ENV GOPROXY=${GOPROXY} \
     CGO_ENABLED=0
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN go build -trimpath -ldflags "-s -w" -o /out/sounder-worker ./cmd/sounder-worker
+RUN go build -trimpath \
+      -ldflags "-s -w \
+        -X github.com/getsounder/sounder-worker/internal/buildinfo.Version=${VERSION} \
+        -X github.com/getsounder/sounder-worker/internal/buildinfo.Commit=${COMMIT}" \
+      -o /out/sounder-worker ./cmd/sounder-worker
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \

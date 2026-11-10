@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [sounder-server, sounder-worker, sounder-gateway]
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      # 不要用 ./...：build/ios 是生成的入口，只在 Xcode 下编译。
+      - run: go build .
+      - run: go test ./shell/...
+
+  postgres-migrate:
+    name: postgres migrations
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sounder-server
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sounder
+          POSTGRES_PASSWORD: sounder
+          POSTGRES_DB: sounder
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sounder"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sounder-server/go.mod
+          cache-dependency-path: sounder-server/go.sum
+      - name: fresh database migration
+        env:
+          SOUNDER_TEST_POSTGRES: postgres://sounder:sounder@localhost:5432/sounder?sslmode=disable
+        run: go test ./internal/store/ -run TestPostgresMigrateFreshDatabase -v
+
+  web:
+    name: web scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: ./scripts/check-js.sh
+
+  desktop:
+    name: desktop build
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: sounder-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sounder-desktop/go.mod
+          cache-dependency-path: sounder-desktop/go.sum
+      # 不要用 ./...：build/ios 是生成的入口，只在 Xcode 下编译。
+      - run: go build .
+      - run: go test ./shell/...

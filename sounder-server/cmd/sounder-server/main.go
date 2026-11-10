@@ -94,6 +94,9 @@ func main() {
 		if err := pg.Migrate(); err != nil {
 			log.Fatalf("migrate: %v", err)
 		}
+		if applied, err := pg.MigrationStatus(); err == nil {
+			log.Printf("postgres: %d migration(s) applied (%v)", len(applied), applied)
+		}
 		defer pg.Close()
 		st = pg
 		ast = pg

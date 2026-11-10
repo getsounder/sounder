@@ -23,6 +23,7 @@ import (
 
 	"github.com/getsounder/sounder-worker/internal/api"
 	"github.com/getsounder/sounder-worker/internal/approval"
+	"github.com/getsounder/sounder-worker/internal/buildinfo"
 	"github.com/getsounder/sounder-worker/internal/protocol"
 	"github.com/getsounder/sounder-worker/internal/session"
 	"github.com/getsounder/sounder-worker/internal/tunnel"
@@ -128,7 +129,7 @@ func main() {
 			}
 		}
 		tc := tunnel.New(
-			*gateway, getToken(), *token, id, *workerKind, "0.1.0",
+			*gateway, getToken(), *token, id, *workerKind, buildinfo.String(),
 			"http://"+ln.Addr().String(), *max, m.Len,
 		)
 		tc.SetTokenFunc(getToken)

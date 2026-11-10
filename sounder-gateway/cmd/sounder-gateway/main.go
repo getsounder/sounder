@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/getsounder/sounder-gateway/internal/api"
+	"github.com/getsounder/sounder-gateway/internal/buildinfo"
 	"github.com/getsounder/sounder-gateway/internal/registry"
 )
 
@@ -45,7 +46,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("listen: %v", err)
 	}
-	log.Printf("sounder-gateway listening on %s", ln.Addr())
+	log.Printf("sounder-gateway %s listening on %s", buildinfo.String(), ln.Addr())
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
