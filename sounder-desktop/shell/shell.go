@@ -38,6 +38,13 @@ type Config struct {
 	DataDir   string
 	Model     string
 	Container string
+
+	// 可选：接入控制面。设置后本机设备会连上网关并登记到服务端，
+	// Web/移动端就能看到并切到这台桌面设备。
+	Server       string // 控制面地址，如 https://sounder.example.com
+	AccessToken  string // 控制面访问 token（用户登录后拿到的）
+	Gateway      string // 网关隧道地址，如 ws://127.0.0.1:19090/v1/tunnel
+	GatewayToken string // 网关 Bearer token
 }
 
 // Service 是 Wails 的 service 实现，也是 CLI 调试入口。
@@ -165,6 +172,7 @@ type ContainerRunner struct {
 	Container string
 	DataDir   string
 	Model     string
+	Extra     []string // 追加给 worker 的参数（隧道、worker-id 等）
 }
 
 func (c *ContainerRunner) Start(ctx context.Context, workspace string) (Endpoint, error) {
@@ -191,6 +199,7 @@ func (c *ContainerRunner) Start(ctx context.Context, workspace string) (Endpoint
 		// Worker 只认 -model flag；仅在 docker run 的 -e 里设置环境变量不会生效。
 		args = append(args, "-model="+c.Model)
 	}
+	args = append(args, c.Extra...)
 
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 	if err != nil {
@@ -225,6 +234,7 @@ type ProcessRunner struct {
 	Binary  string
 	DataDir string
 	Model   string
+	Extra   []string
 	cmd     *exec.Cmd
 }
 
@@ -237,6 +247,7 @@ func (p *ProcessRunner) Start(ctx context.Context, workspace string) (Endpoint, 
 	if p.Model != "" {
 		args = append(args, "-model="+p.Model)
 	}
+	args = append(args, p.Extra...)
 	cmd := exec.CommandContext(ctx, p.Binary, args...)
 	cmd.Dir = workspace
 	stdout, err := cmd.StdoutPipe()
