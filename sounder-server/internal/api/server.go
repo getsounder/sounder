@@ -93,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sessions/{id}", s.handleDelete)
 	mux.HandleFunc("POST /v1/sessions/{id}/prompts", s.handlePrompt)
 	mux.HandleFunc("POST /v1/sessions/{id}/cancel", s.handleCancel)
+	mux.HandleFunc("PUT /v1/sessions/{id}/title", s.handleRenameSession)
 	mux.HandleFunc("GET /v1/sessions/{id}/events", s.handleEvents)
 	mux.HandleFunc("GET /v1/sessions/{id}/history", s.handleHistory)
 	mux.HandleFunc("GET /v1/approvals", s.handleApprovals)
