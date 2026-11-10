@@ -114,6 +114,29 @@ func (c *Client) session(ctx context.Context) error {
 	}
 	defer ws.Close()
 
+	_ = ws.SetReadDeadline(time.Now().Add(120 * time.Second))
+	ws.SetPongHandler(func(string) error {
+		return ws.SetReadDeadline(time.Now().Add(120 * time.Second))
+	})
+
+	// 定期发 ping：网关回 pong，两边都不会因空闲被判超时。
+	stopPing := make(chan struct{})
+	defer close(stopPing)
+	go func() {
+		t := time.NewTicker(25 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stopPing:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				_ = ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second))
+			}
+		}
+	}()
+
 	var writeMu sync.Mutex
 	write := func(f wireFrame) error {
 		writeMu.Lock()

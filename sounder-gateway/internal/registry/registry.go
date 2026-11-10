@@ -75,7 +75,10 @@ func (r *Registry) Touch(id string, used int) {
 	defer r.mu.Unlock()
 	if w, ok := r.workers[id]; ok {
 		w.LastSeen = time.Now()
-		w.Used = used
+		// used < 0 表示只续心跳，不改占用数。
+		if used >= 0 {
+			w.Used = used
+		}
 	}
 }
 
@@ -157,6 +160,11 @@ func (r *Registry) Cleanup(timeout time.Duration) []string {
 	var dead []string
 	for id, w := range r.workers {
 		if time.Since(w.LastSeen) > timeout {
+			// 连着但长时间没动静：关掉连接，让 Worker 重连后重新注册，
+			// 否则会留下一条"注册表里没有、但连接还在"的僵尸隧道。
+			if c, ok := r.conns[id]; ok {
+				_ = c.Close()
+			}
 			dead = append(dead, id)
 			for sid, ch := range w.subs {
 				delete(w.subs, sid)
