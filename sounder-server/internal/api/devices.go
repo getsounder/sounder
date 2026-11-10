@@ -460,15 +460,39 @@ func (s *Server) handleStopDevice(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "stopped"})
 }
 
-// handleGetQuota 返回当前用户的配额与用量。
+// 管理员可以用 ?userId= 或 ?email= 查看别人的配额。
+func (s *Server) resolveTargetUser(r *http.Request, ctx authContext) (string, bool) {
+	id := r.URL.Query().Get("userId")
+	email := r.URL.Query().Get("email")
+	if id == "" && email == "" {
+		return ctx.UserID, true
+	}
+	if !ctx.Admin {
+		return "", false
+	}
+	if id != "" {
+		return id, true
+	}
+	if u, err := s.authStore.GetUserByEmail(email); err == nil {
+		return u.ID, true
+	}
+	return "", false
+}
+
+// handleGetQuota 返回配额与用量（默认自己；管理员可查任意用户）。
 func (s *Server) handleGetQuota(w http.ResponseWriter, r *http.Request) {
 	ctx := authFrom(r)
-	q, err := s.store.GetQuota(ctx.UserID)
+	userID, ok := s.resolveTargetUser(r, ctx)
+	if !ok {
+		writeErr(w, http.StatusForbidden, "admin only")
+		return
+	}
+	q, err := s.store.GetQuota(userID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	devices, _ := s.store.ListDevices(ctx.UserID)
+	devices, _ := s.store.ListDevices(userID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"quota": q,
 		"usage": map[string]any{
@@ -487,6 +511,7 @@ func (s *Server) handleSetQuota(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		UserID       string `json:"userId"`
+		Email        string `json:"email"`
 		MaxDevices   int    `json:"maxDevices"`
 		DeviceCPU    int    `json:"deviceCpu"`
 		DeviceMemMB  int    `json:"deviceMemMb"`
@@ -496,8 +521,13 @@ func (s *Server) handleSetQuota(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
 		return
 	}
+	if req.UserID == "" && req.Email != "" {
+		if u, err := s.authStore.GetUserByEmail(req.Email); err == nil {
+			req.UserID = u.ID
+		}
+	}
 	if req.UserID == "" {
-		writeErr(w, http.StatusBadRequest, "userId required")
+		writeErr(w, http.StatusBadRequest, "userId or email required")
 		return
 	}
 	q, err := s.store.GetQuota(req.UserID)
