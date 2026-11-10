@@ -469,6 +469,11 @@
   .queue-head h3 { margin: 0 0 2px; font-size: 15px; }
   .queue-head .sub { margin: 0; }
   .queue-actions { display: flex; gap: 6px; }
+  .queue-bulk {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px; border-bottom: 1px solid var(--line); background: #0f0f13;
+  }
+  .queue-bulk .mono { font-size: 11px; color: var(--muted2); margin-right: auto; }
   #queueBody { padding: 10px 12px 16px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
   .q-item-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #101014; }
   .q-item-card.question { border-color: #2c4066; border-left: 2px solid var(--accent); background: #0f1626; }
@@ -479,6 +484,20 @@
   .q-item-card .row { display: flex; gap: 6px; align-items: center; }
   .q-item-card input { flex: 1; font-size: 12px; }
   .q-jump { margin-left: auto; }
+
+  .ctx-menu {
+    position: fixed; z-index: 70; min-width: 156px; padding: 4px;
+    background: #101014; border: 1px solid var(--line-strong); border-radius: 8px;
+    box-shadow: 0 16px 44px #000b;
+  }
+  .ctx-menu button {
+    display: block; width: 100%; text-align: left; padding: 6px 10px;
+    font-size: 12.5px; background: transparent; border: 0; border-radius: 6px; color: var(--fg);
+  }
+  .ctx-menu button:hover { background: #1a1a21; }
+  .ctx-menu button.danger { color: #ffb3ba; }
+  .ctx-menu button.danger:hover { background: #2a1418; }
+  .ctx-menu .sep-line { height: 1px; background: var(--line); margin: 4px 2px; }
 
   #toast {
     position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 10px);
@@ -560,7 +579,7 @@
   .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-BgZVSMbv.js"></script>
+  <script type="module" crossorigin src="/assets/index-DVBEa8Ov.js"></script>
 </head>
 <body>
 <div class="app">
@@ -729,9 +748,16 @@
         <button class="sm" id="queueClose" type="button">关闭</button>
       </div>
     </div>
+    <div class="queue-bulk" id="queueBulk" hidden>
+      <span id="queueBulkInfo" class="mono"></span>
+      <button class="sm" id="queueAllowAll" type="button">全部允许</button>
+      <button class="sm danger" id="queueDenyAll" type="button">全部拒绝</button>
+    </div>
     <div id="queueBody"></div>
   </div>
 </div>
+
+<div id="ctxMenu" class="ctx-menu" hidden></div>
 
 <div id="toast" role="status" aria-live="polite"></div>
 <div class="modal" id="accountModal" hidden>
