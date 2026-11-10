@@ -53,6 +53,45 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .workspace-chip:hover { color: var(--fg); border-color: var(--line-strong); }
+  .device-chip {
+    display: flex; align-items: center; gap: 6px; max-width: 260px;
+    padding: 3px 9px; border-radius: 6px; border: 1px solid var(--line);
+    background: #121216; color: var(--fg); font-size: 12px;
+  }
+  .device-chip i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted2); flex: none; }
+  .device-chip i.on { background: var(--ok); }
+  .device-chip .d-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .device-menu {
+    position: fixed; top: 52px; left: 12px; z-index: 45; width: min(340px, calc(100vw - 24px));
+    background: #0f0f13; border: 1px solid var(--line-strong); border-radius: 10px;
+    box-shadow: 0 18px 50px #000a; overflow: hidden;
+  }
+  .device-menu .dm-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--line);
+  }
+  .device-menu .dm-title { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .device-menu .dm-quota { font-size: 10.5px; color: var(--muted2); }
+  .device-menu ul { list-style: none; margin: 0; padding: 4px; max-height: 46vh; overflow: auto; }
+  .device-menu .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted2); flex: none; }
+  .device-menu .dot.on { background: var(--ok); }
+  .device-menu li {
+    display: flex; align-items: center; gap: 8px; padding: 7px 8px;
+    border-radius: 6px; cursor: pointer; color: var(--fg);
+  }
+  .device-menu li:hover { background: #16161b; }
+  .device-menu li.on { background: #1a1a21; }
+  .device-menu li.empty { cursor: default; color: var(--muted2); font-size: 12px; justify-content: center; padding: 14px; }
+  .device-menu li.empty:hover { background: transparent; }
+  .device-menu .dm-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+  .device-menu .dm-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .device-menu .dm-sub { font-size: 10.5px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .device-menu .dm-acts { display: flex; gap: 4px; opacity: 0; }
+  .device-menu li:hover .dm-acts { opacity: 1; }
+  .device-menu .dm-acts button { padding: 1px 6px; font-size: 10.5px; border-radius: 5px; }
+  .device-menu .dm-foot { padding: 8px; border-top: 1px solid var(--line); display: flex; gap: 6px; }
+  .device-menu .dm-foot button { flex: 1; font-size: 12px; padding: 6px; }
   .status {
     margin-left: auto; display: flex; align-items: center; gap: 6px;
     font-size: 11.5px; color: var(--muted2); transition: color .2s;
@@ -155,6 +194,8 @@
   }
   .empty-state h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
   .empty-state p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .empty-device { margin: 22px auto 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .empty-device p { margin: 0; font-size: 11px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .kbd-hints { margin-top: 20px; display: flex; gap: 14px; justify-content: center; color: var(--muted2); font-size: 11px; }
 
   .msg {
@@ -330,21 +371,29 @@
     .jump-bottom { right: 16px; bottom: 96px; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-D-8KUVDi.js"></script>
+  <script type="module" crossorigin src="/assets/index-BmMNpjzu.js"></script>
 </head>
 <body>
 <div class="app">
   <header>
     <button id="menuBtn" title="会话列表" aria-label="会话列表">☰</button>
     <div class="brand"><span class="logo">S</span><span class="brand-name">Sound<em>er</em></span></div>
+    <button id="deviceChip" class="device-chip" hidden title="当前设备（点击切换）"><i id="deviceDot"></i><span class="d-name" id="deviceName">设备</span></button>
     <button id="wsChip" class="workspace-chip" hidden title="当前会话的工作区（点击复制）"></button>
     <button id="userChip" hidden title="账号">账号</button>
     <button id="settingsBtn" class="icon-btn" title="设置" aria-label="设置">⚙</button>
     <div class="status"><i id="conn"></i><span id="connText">未连接</span></div>
   </header>
   <div id="setup" hidden>
-    <input id="api" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="云端 API 地址，如 https://sounder.example.com">
+    <input id="api" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="服务器地址，如 https://sounder.example.com（仅首次连接需要）">
     <button id="applyApi" class="primary">连接</button>
+  </div>
+  <div id="deviceMenu" class="device-menu" hidden>
+    <div class="dm-head"><span class="dm-title">设备</span><span class="dm-quota" id="deviceQuota"></span></div>
+    <ul id="deviceList"></ul>
+    <div class="dm-foot">
+      <button id="addCloudDevice" type="button">＋ 添加云端设备</button>
+    </div>
   </div>
   <main>
     <aside>
