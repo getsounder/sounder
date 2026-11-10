@@ -118,6 +118,21 @@
   }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+  #drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 40; width: min(560px, 92vw);
+    background: #0d0d11; border-left: 1px solid var(--line-strong); display: flex; flex-direction: column;
+    box-shadow: -20px 0 60px #000a;
+  }
+  .drawer-head { display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .drawer-title { font-size: 13.5px; font-weight: 600; margin-bottom: 2px; }
+  .drawer-head button { margin-left: auto; }
+  .drawer-body { padding: 14px 16px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+  .dm-msg { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #101014; }
+  .dm-msg .who { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2); margin-bottom: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .dm-msg .txt { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; line-height: 1.6; }
+  .dm-msg.user { border-color: #2b3a5c; background: #101725; }
+  .dm-msg.tool { border-left: 2px solid var(--line-strong); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+
   @media (max-width: 720px) {
     #app { grid-template-columns: 1fr; }
     aside { position: fixed; inset: 0 auto 0 0; width: 210px; z-index: 20; transform: translateX(-101%); transition: transform .18s; }
@@ -181,6 +196,17 @@
       <button class="primary" type="button" id="qSave">保存</button>
     </div>
   </div>
+</div>
+
+<div id="drawer" hidden>
+  <div class="drawer-head">
+    <div>
+      <div class="drawer-title" id="drawerTitle">会话</div>
+      <div class="mono" id="drawerSub" style="font-size:11px;color:var(--muted2)"></div>
+    </div>
+    <button class="sm" id="drawerClose" type="button">关闭</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
@@ -522,13 +548,19 @@ async function renderSessions() {
       <td>${esc(s.model || "—")}</td>
       <td><span class="tag ${s.state === "running" ? "warn" : "ok"}">${esc(s.state)}</span></td>
       <td class="mono">${(s.createdAt || "").slice(0, 16).replace("T", " ")}</td>
-      <td><button class="sm danger" data-sdel="${esc(s.id)}">删除</button></td>
+      <td class="row-actions">
+        <button class="sm" data-sview="${esc(s.id)}">查看</button>
+        <button class="sm danger" data-sdel="${esc(s.id)}">删除</button>
+      </td>
     </tr>`).join("");
   $("view").innerHTML = `
     <table>
       <thead><tr><th>会话</th><th>归属</th><th>设备</th><th>模型</th><th>状态</th><th>创建</th><th></th></tr></thead>
       <tbody>${rows || '<tr><td colspan="7" class="empty">还没有会话</td></tr>'}</tbody>
     </table>`;
+  for (const btn of $("view").querySelectorAll("[data-sview]")) {
+    btn.onclick = () => openSession((data.sessions || []).find((x) => x.id === btn.dataset.sview));
+  }
   for (const btn of $("view").querySelectorAll("[data-sdel]")) {
     btn.onclick = async () => {
       if (!confirm("删除该会话？")) return;
@@ -544,6 +576,35 @@ async function renderSessions() {
     };
   }
 }
+
+// ---------- 会话详情 ----------
+async function openSession(sess) {
+  if (!sess) return;
+  $("drawer").hidden = false;
+  $("drawerTitle").textContent = sess.id;
+  $("drawerSub").textContent = `${sess.ownerEmail || sess.ownerId || "—"} · ${sess.workerId} · ${(sess.createdAt || "").slice(0, 19).replace("T", " ")}`;
+  $("drawerBody").innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const data = await api(`/v1/sessions/${encodeURIComponent(sess.id)}/history?limit=200`);
+    const msgs = data.messages || [];
+    if (!msgs.length) {
+      $("drawerBody").innerHTML = '<div class="empty">这段会话还没有消息</div>';
+      return;
+    }
+    $("drawerBody").innerHTML = msgs.map((m) => {
+      if (m.role === "toolResult") {
+        return `<div class="dm-msg tool">${esc(m.tool || "tool")} · ${m.isError ? "失败" : "完成"}${m.text ? " · " + esc(String(m.text).slice(0, 400)) : ""}</div>`;
+      }
+      const cls = m.role === "user" ? "user" : "";
+      const who = m.role === "user" ? "你" : m.role === "assistant" ? "Agent" : m.role;
+      return `<div class="dm-msg ${cls}"><div class="who">${esc(who)}</div><div class="txt">${esc(m.text || "")}</div></div>`;
+    }).join("");
+  } catch (e) {
+    $("drawerBody").innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+$("drawerClose").onclick = () => { $("drawer").hidden = true; };
 
 // ---------- Worker ----------
 async function renderWorkers() {
