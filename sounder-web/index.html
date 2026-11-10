@@ -146,6 +146,13 @@
   }
   .aside-search { padding: 0 10px 6px; }
   .aside-search input { width: 100%; font-size: 11.5px; padding: 5px 9px; height: 28px; }
+  .aside-tools { display: flex; align-items: center; gap: 6px; }
+  .mini {
+    font-size: 10px; padding: 1px 6px; border-radius: 5px; line-height: 16px;
+    background: #14141a; border: 1px solid var(--line); color: var(--muted2);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .mini.on { color: var(--fg); border-color: var(--line-strong); background: #1a1a21; }
   #sessions {
     list-style: none; margin: 0; padding: 0 6px 12px; overflow: auto;
     display: flex; flex-direction: column; gap: 1px;
@@ -328,6 +335,18 @@
     color: var(--muted2); display: flex; gap: 8px; align-items: baseline;
   }
   .tool b { color: var(--muted); font-weight: 500; }
+  .tool-group { align-self: stretch; border-left: 2px solid var(--line-strong); padding-left: 10px; }
+  .tg-head {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 11.5px; color: var(--muted2); user-select: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .tg-head:hover { color: var(--fg); }
+  .tg-head .tg-chev { transition: transform .12s; }
+  .tool-group.collapsed .tg-chev { transform: rotate(-90deg); }
+  .tg-body { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .tool-group.collapsed .tg-body { display: none; }
+  .tg-body .tool { border-left: 0; padding-left: 0; }
   .tool.running::before { content: "◌"; color: var(--accent2); animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .event { align-self: stretch; font-size: 11px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -546,7 +565,7 @@
         <button id="newBtn" class="primary">＋ 新建会话</button>
         <button id="refreshBtn" class="icon-btn" title="刷新" aria-label="刷新">↻</button>
       </div>
-      <div class="aside-label"><span>会话</span><span id="sessionCount"></span></div>
+      <div class="aside-label"><span>会话</span><span class="aside-tools"><button id="filterBtn" class="mini" type="button" title="只看进行中">筛选</button><span id="sessionCount"></span></span></div>
       <div class="aside-search"><input id="search" type="search" placeholder="搜索会话" autocomplete="off"></div>
       <ul id="sessions"></ul>
     </aside>
@@ -744,6 +763,8 @@ const state = {
   turnStart: 0,
   toolRow: null,
   toolStart: 0,
+  toolGroup: null,
+  onlyActive: false,
   admin: false,
   gatewayUrl: "",
   capacity: 0,
@@ -1709,12 +1730,15 @@ function renderSessions() {
     return;
   }
 
+  const ACTIVE_STATES = new Set(["running", "approval", "question"]);
+  let list = state.sessions;
+  if (state.onlyActive) list = list.filter((s) => ACTIVE_STATES.has(s.state));
   const q = ($("search")?.value || "").trim().toLowerCase();
-  const list = q
-    ? state.sessions.filter((s) =>
-        sessionTitle(s).toLowerCase().includes(q) || String(s.id).toLowerCase().includes(q) ||
-        String(s.model || "").toLowerCase().includes(q))
-    : state.sessions;
+  if (q) {
+    list = list.filter((s) =>
+      sessionTitle(s).toLowerCase().includes(q) || String(s.id).toLowerCase().includes(q) ||
+      String(s.model || "").toLowerCase().includes(q));
+  }
 
   if (!list.length) {
     ul.innerHTML = '<li class="empty-item">没有匹配的会话</li>';
@@ -2192,11 +2216,41 @@ function scheduleBubbleRender() {
   }, 80);
 }
 
+function currentToolGroup() {
+  if (state.toolGroup) return state.toolGroup;
+  const box = document.createElement("div");
+  box.className = "tool-group";
+  box.innerHTML = '<div class="tg-head"><span class="tg-chev">▾</span><span class="tg-title"></span></div><div class="tg-body"></div>';
+  logEl().appendChild(box);
+  const head = box.querySelector(".tg-head");
+  head.onclick = () => box.classList.toggle("collapsed");
+  state.toolGroup = { box, body: box.querySelector(".tg-body"), count: 0, ms: 0 };
+  updateToolGroupHead(state.toolGroup);
+  return state.toolGroup;
+}
+
+function updateToolGroupHead(g) {
+  const title = g.box.querySelector(".tg-title");
+  const took = g.ms ? " · " + (g.ms < 60000 ? (g.ms / 1000).toFixed(1) + "s" : Math.round(g.ms / 60000) + "m" + Math.round((g.ms % 60000) / 1000) + "s") : "";
+  const verb = g.count === 1 ? "1 个工具" : g.count + " 个工具";
+  title.textContent = "工具调用 · " + verb + took;
+}
+
+// 一段工具调用结束：3 个以上自动收起，留一行摘要
+function closeToolGroup() {
+  const g = state.toolGroup;
+  state.toolGroup = null;
+  if (!g) return;
+  updateToolGroupHead(g);
+  if (g.count >= 3) g.box.classList.add("collapsed");
+}
+
 function renderEvent(evt) {
   const type = evt.type || "";
   const p = evt.payload || {};
 
   if (type === "message.start") {
+    closeToolGroup();
     setRunning(true);
     if (!state.turnStart) state.turnStart = Date.now();
     state.bubble = addEl("msg assistant", '<div class="meta">Agent</div><div class="body md">生成中…</div>');
@@ -2231,14 +2285,23 @@ function renderEvent(evt) {
     return;
   }
   if (type === "tool.start") {
-    const el = addEl("tool running", `<b>${esc(p.tool || p.name || "tool")}</b> 执行中…`);
-    state.toolRow = el;
+    const g = currentToolGroup();
+    g.box.classList.remove("collapsed");
+    const row = document.createElement("div");
+    row.className = "tool running";
+    row.innerHTML = `<b>${esc(p.tool || p.name || "tool")}</b> 执行中…`;
+    g.body.appendChild(row);
+    g.count++;
+    updateToolGroupHead(g);
+    state.toolRow = row;
     state.toolStart = Date.now();
+    if (atBottom()) scrollToBottom();
     return;
   }
   if (type === "tool.end") {
     const name = esc(p.tool || p.name || "tool");
-    const secs = state.toolStart ? ((Date.now() - state.toolStart) / 1000).toFixed(1) + "s" : "";
+    const elapsed = state.toolStart ? Date.now() - state.toolStart : 0;
+    const secs = elapsed ? (elapsed / 1000).toFixed(1) + "s" : "";
     const line = `<b>${name}</b> · ${p.isError ? "失败" : "完成"}` +
       (p.exitCode !== undefined ? " · exit " + esc(String(p.exitCode)) : "") +
       (secs ? " · " + secs : "");
@@ -2246,13 +2309,24 @@ function renderEvent(evt) {
       state.toolRow.className = "tool";
       state.toolRow.innerHTML = line;
     } else {
-      addEl("tool", line);
+      const g = currentToolGroup();
+      const row = document.createElement("div");
+      row.className = "tool";
+      row.innerHTML = line;
+      g.body.appendChild(row);
+      g.count++;
+    }
+    if (state.toolGroup) {
+      state.toolGroup.ms += elapsed;
+      updateToolGroupHead(state.toolGroup);
     }
     state.toolRow = null;
     state.toolStart = 0;
+    if (atBottom()) scrollToBottom();
     return;
   }
   if (type === "session.settled") {
+    closeToolGroup();
     const took = state.turnStart ? (Date.now() - state.turnStart) / 1000 : 0;
     const label = took ? `本轮耗时 ${took < 60 ? took.toFixed(1) + "s" : Math.round(took / 60) + "m" + Math.round(took % 60) + "s"}` : "本轮结束";
     addEl("event", label);
@@ -2267,6 +2341,7 @@ function renderEvent(evt) {
     return;
   }
   if (type === "approval.requested") {
+    closeToolGroup();
     // 立即把当前会话标记为待审批/待回答，侧栏状态实时更新
     if (state.current) {
       state.current.state = p.tool === "ask_user" || p.level === "question" ? "question" : "approval";
@@ -2280,6 +2355,7 @@ function renderEvent(evt) {
     setRunning(false);
     return;
   }
+  closeToolGroup();
   addEl("event", esc(type) + (p && Object.keys(p).length ? " · " + esc(JSON.stringify(p).slice(0, 160)) : ""));
 }
 
@@ -2455,6 +2531,12 @@ $("refreshBtn").onclick = () => loadSessions().catch(showError);
 $("composer").onsubmit = sendPrompt;
 $("stopBtn").onclick = cancelTurn;
 $("search").oninput = renderSessions;
+$("filterBtn").onclick = () => {
+  state.onlyActive = !state.onlyActive;
+  $("filterBtn").classList.toggle("on", state.onlyActive);
+  $("filterBtn").textContent = state.onlyActive ? "进行中" : "筛选";
+  renderSessions();
+};
 
 // ---------- 设置 ----------
 const SETTINGS_KEY = "sounder.settings";
