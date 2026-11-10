@@ -222,7 +222,18 @@
     background: var(--panel); display: flex; flex-direction: column; min-height: 0;
   }
   .ip-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .ip-rows { padding: 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+  #infoRows { overflow: auto; padding: 6px 8px 10px; }
+  .ip-group { border-bottom: 1px solid var(--line); }
+  .ip-group:last-child { border-bottom: 0; }
+  .ip-group > summary {
+    cursor: pointer; list-style: none; padding: 8px 4px 6px;
+    font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted2);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .ip-group > summary::-webkit-details-marker { display: none; }
+  .ip-group > summary::before { content: "▾ "; color: var(--line-strong); }
+  .ip-group:not([open]) > summary::before { content: "▸ "; }
+  .ip-rows { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; }
   .ip-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; font-size: 12px; }
   .ip-row:hover { background: #15151a; }
   .ip-row .k { color: var(--muted2); width: 68px; flex: none; font-size: 11.5px; }
@@ -452,6 +463,22 @@
     box-shadow: 0 6px 18px #0008;
   }
   #userChip { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 9px; font-size: 12px; }
+
+  .sheet.queue { width: min(760px, 96vw); max-height: 88vh; display: flex; flex-direction: column; padding: 0; }
+  .queue-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .queue-head h3 { margin: 0 0 2px; font-size: 15px; }
+  .queue-head .sub { margin: 0; }
+  .queue-actions { display: flex; gap: 6px; }
+  #queueBody { padding: 10px 12px 16px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  .q-item-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #101014; }
+  .q-item-card.question { border-color: #2c4066; border-left: 2px solid var(--accent); background: #0f1626; }
+  .q-meta { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--muted2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; margin-bottom: 6px; }
+  .q-meta .tool { border-left: 0; padding: 0; background: none; color: var(--muted); }
+  .q-item-card .q-text { font-size: 12.5px; margin-bottom: 8px; }
+  .q-item-card pre { margin: 6px 0 10px; max-height: 180px; overflow: auto; font-size: 11px; background: #0b0b0f; border-radius: 6px; padding: 8px; }
+  .q-item-card .row { display: flex; gap: 6px; align-items: center; }
+  .q-item-card input { flex: 1; font-size: 12px; }
+  .q-jump { margin-left: auto; }
 
   #toast {
     position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 10px);
@@ -692,6 +719,19 @@
     </div>
   </div>
 </div>
+<div class="modal" id="queueModal" hidden>
+  <div class="sheet queue">
+    <div class="queue-head">
+      <div><h3>待办</h3><p class="sub" id="queueSub">跨设备的审批与提问</p></div>
+      <div class="queue-actions">
+        <button class="sm" id="queueRefresh" type="button">刷新</button>
+        <button class="sm" id="queueClose" type="button">关闭</button>
+      </div>
+    </div>
+    <div id="queueBody"></div>
+  </div>
+</div>
+
 <div id="toast" role="status" aria-live="polite"></div>
 <div class="modal" id="accountModal" hidden>
   <div class="card">
@@ -1739,6 +1779,9 @@ function renderSessions() {
       sessionTitle(s).toLowerCase().includes(q) || String(s.id).toLowerCase().includes(q) ||
       String(s.model || "").toLowerCase().includes(q));
   }
+  // 按「上次活动」排序（Worker 的 lastActiveAt，回退到 updatedAt / createdAt）
+  const activity = (s) => new Date(s.lastActiveAt || s.updatedAt || s.createdAt || 0).getTime() || 0;
+  list = [...list].sort((a, b) => activity(b) - activity(a));
 
   if (!list.length) {
     ul.innerHTML = '<li class="empty-item">没有匹配的会话</li>';
@@ -1958,9 +2001,19 @@ function renderInfoPanel() {
     ["本轮耗时", s && s.lastDuration ? formatDuration(s.lastDuration) : "—"],
     ["创建", s && s.createdAt ? new Date(s.createdAt).toLocaleString("zh-CN") : "—"],
   ];
-  $("infoRows").innerHTML = rows
+  const renderRows = (pairs) => pairs
     .map(([k, v]) => `<div class="ip-row"><span class="k">${esc(k)}</span><span class="v" title="${esc(v)}">${esc(v)}</span></div>`)
     .join("");
+  const groups = [
+    ["会话", rows.filter(([k]) => ["会话", "创建", "标题"].includes(k))],
+    ["运行", rows.filter(([k]) => ["设备", "模型", "状态", "待处理", "本轮耗时"].includes(k))],
+    ["工作区", rows.filter(([k]) => k === "工作区")],
+  ];
+  $("infoRows").innerHTML = groups
+    .filter(([, pairs]) => pairs.length)
+    .map(([name, pairs]) =>
+      `<details class="ip-group" open><summary>${name}</summary><div class="ip-rows">${renderRows(pairs)}</div></details>`
+    ).join("");
 }
 
 function updateSessionChrome() {
@@ -2379,12 +2432,93 @@ function resolveApproval(id) {
   }
 }
 
-async function answerApproval(approvalId, allow, reason) {
-  return api(`/v1/approvals/${encodeURIComponent(approvalId)}?workerId=${encodeURIComponent(state.current?.workerId || "")}`, {
+async function answerApproval(approvalId, allow, reason, workerId) {
+  const wid = workerId || state.current?.workerId || "";
+  return api(`/v1/approvals/${encodeURIComponent(approvalId)}?workerId=${encodeURIComponent(wid)}`, {
     method: "POST",
     body: JSON.stringify({ allow, reason }),
   });
 }
+
+// ---------- 待办队列（跨设备汇总） ----------
+async function openQueue() {
+  $("queueModal").hidden = false;
+  await renderQueue();
+}
+
+async function renderQueue() {
+  const body = $("queueBody");
+  body.innerHTML = '<div class="empty">加载中…</div>';
+  try {
+    const data = await api("/v1/approvals");
+    const items = data.approvals || [];
+    $("queueSub").textContent = items.length ? `${items.length} 项待处理（跨设备）` : "当前没有待处理项";
+    if (!items.length) {
+      body.innerHTML = '<div class="empty">没有待处理的审批或提问</div>';
+      return;
+    }
+    body.innerHTML = "";
+    for (const it of items) {
+      const isQuestion = it.tool === "ask_user" || it.level === "question";
+      const card = document.createElement("div");
+      card.className = "q-item-card" + (isQuestion ? " question" : "");
+      const opts = Array.isArray(it.args?.questions)
+        ? `<div class="q-text">${esc((it.reason || ""))}</div>`
+        : "";
+      card.innerHTML =
+        `<div class="q-meta"><span>${esc(it.deviceName || it.workerId || "本机")}</span>` +
+        `<span class="tool">${esc(it.tool || "")}</span>` +
+        `<span class="lvl">${esc(LEVEL_LABEL[String(it.level || "").toLowerCase()] || it.level || "")}</span>` +
+        `<span>${esc(String(it.sessionId || "").slice(0, 12))}</span></div>` +
+        (isQuestion ? "" : (it.reason ? `<div style="font-size:12px;color:#d8c9a0">${esc(it.reason)}</div>` : "")) +
+        (isQuestion
+          ? `<div class="q-text">${esc(it.reason || "")}</div><div class="row"><input type="text" placeholder="输入回答…"><button class="primary" data-allow="q">回答</button><button data-allow="0">拒绝</button></div>`
+          : `<details><summary>查看参数</summary><pre>${esc(JSON.stringify(it.args || {}, null, 2))}</pre></details>` +
+            `<div class="row"><button class="primary" data-allow="1">允许</button><button data-allow="0">拒绝</button>` +
+            `<button class="q-jump" data-jump="1">前往会话</button></div>`);
+      body.appendChild(card);
+
+      const finish = async (allow, reason) => {
+        try {
+          await answerApproval(it.id, allow, reason, it.workerId);
+          card.remove();
+          resolveApproval(it.id);
+          await renderQueue();
+        } catch (e) {
+          toast(e.message || "提交失败");
+        }
+      };
+
+      card.querySelectorAll("[data-allow]").forEach((btn) => {
+        btn.onclick = () => {
+          if (btn.dataset.allow === "q") {
+            const input = card.querySelector("input");
+            const text = (input?.value || "").trim();
+            if (!text) { input?.focus(); return; }
+            finish(true, JSON.stringify({ answers: [{ question: it.reason || "", answer: text }] }));
+            return;
+          }
+          finish(btn.dataset.allow === "1", "");
+        };
+      });
+      card.querySelector("[data-jump]")?.addEventListener("click", () => {
+        const target = state.sessions.find((x) => x.id === it.sessionId);
+        if (target) {
+          $("queueModal").hidden = true;
+          selectSession(target);
+        } else {
+          toast("这条会话不在当前设备列表里");
+        }
+      });
+    }
+  } catch (e) {
+    body.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+$("queueRefresh").onclick = () => renderQueue();
+$("queueClose").onclick = () => { $("queueModal").hidden = true; };
+$("queueModal").onclick = (e) => { if (e.target === $("queueModal")) $("queueModal").hidden = true; };
 
 function renderApproval(p) {
   const isQuestion = p.tool === "ask_user" || p.level === "question";
@@ -2821,6 +2955,7 @@ document.addEventListener("click", (e) => {
 });
 
 $("settingsBtn").onclick = openSettings;
+$("approvalBadge").onclick = openQueue;
 $("infoBtn").onclick = () => {
   const panel = $("infoPanel");
   panel.hidden = !panel.hidden;
@@ -2842,6 +2977,11 @@ document.addEventListener("keydown", (e) => {
   if (mod && e.key.toLowerCase() === "f") {
     e.preventDefault();
     openFind();
+    return;
+  }
+  if (mod && e.key.toLowerCase() === "j") {
+    e.preventDefault();
+    openQueue();
     return;
   }
   if (mod && e.key.toLowerCase() === "i") {

@@ -279,9 +279,10 @@ func (s *Server) pickWorker(ctx context.Context) (string, error) {
 // sessionView 在会话元数据上叠加 Worker 侧的实时状态（执行中/待审批/待回答）与标题。
 type sessionView struct {
 	store.Session
-	Title    string `json:"title,omitempty"`
-	Pending  string `json:"pending,omitempty"`
-	PendingN int    `json:"pendingCount,omitempty"`
+	Title        string `json:"title,omitempty"`
+	Pending      string `json:"pending,omitempty"`
+	PendingN     int    `json:"pendingCount,omitempty"`
+	LastActiveAt string `json:"lastActiveAt,omitempty"`
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
@@ -303,10 +304,11 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 
 	// 向各 Worker 拉一次实时状态，合并进列表（失败就退回库里的状态）。
 	type liveState struct {
-		State    string
-		Title    string
-		Pending  string
-		PendingN int
+		State        string
+		Title        string
+		Pending      string
+		PendingN     int
+		LastActiveAt string
 	}
 	live := map[string]liveState{}
 	seen := map[string]bool{}
@@ -324,18 +326,22 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		}
 		var out struct {
 			Sessions []struct {
-				ID       string `json:"id"`
-				State    string `json:"state"`
-				Title    string `json:"title"`
-				Pending  string `json:"pending"`
-				PendingN int    `json:"pendingCount"`
+				ID           string `json:"id"`
+				State        string `json:"state"`
+				Title        string `json:"title"`
+				Pending      string `json:"pending"`
+				PendingN     int    `json:"pendingCount"`
+				LastActiveAt string `json:"lastActiveAt"`
 			} `json:"sessions"`
 		}
 		if json.Unmarshal(body, &out) != nil {
 			continue
 		}
 		for _, item := range out.Sessions {
-			live[item.ID] = liveState{State: item.State, Title: item.Title, Pending: item.Pending, PendingN: item.PendingN}
+			live[item.ID] = liveState{
+				State: item.State, Title: item.Title, Pending: item.Pending,
+				PendingN: item.PendingN, LastActiveAt: item.LastActiveAt,
+			}
 		}
 	}
 
@@ -349,6 +355,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 			v.Title = st.Title
 			v.Pending = st.Pending
 			v.PendingN = st.PendingN
+			v.LastActiveAt = st.LastActiveAt
 		}
 		views = append(views, v)
 	}
@@ -550,19 +557,71 @@ func filterApprovals(r *http.Request, owned map[string]bool, body []byte) []byte
 
 func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 	workerID := r.URL.Query().Get("workerId")
-	if workerID == "" {
-		writeErr(w, http.StatusBadRequest, "workerId required")
+	if workerID != "" {
+		status, body, err := s.gw.RPC(r.Context(), workerID, http.MethodGet, "/v1/approvals", nil)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		body = filterApprovals(r, s.ownedSessionSet(r), body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write(body)
 		return
 	}
-	status, body, err := s.gw.RPC(r.Context(), workerID, http.MethodGet, "/v1/approvals", nil)
+
+	// 不带 workerId：汇总该用户所有在线设备上的待办，供「全屏队列」使用。
+	ctx := authFrom(r)
+	devices, err := s.store.ListDevices(ctx.UserID)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, err.Error())
+		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	body = filterApprovals(r, s.ownedSessionSet(r), body)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	type queueItem struct {
+		ID         string         `json:"id"`
+		SessionID  string         `json:"sessionId"`
+		Tool       string         `json:"tool"`
+		Level      string         `json:"level"`
+		Reason     string         `json:"reason,omitempty"`
+		Args       map[string]any `json:"args,omitempty"`
+		CreatedAt  time.Time      `json:"createdAt"`
+		WorkerID   string         `json:"workerId"`
+		DeviceName string         `json:"deviceName,omitempty"`
+	}
+	out := make([]queueItem, 0)
+	seen := map[string]bool{}
+	for _, d := range devices {
+		if seen[d.WorkerID] {
+			continue
+		}
+		seen[d.WorkerID] = true
+		status, body, err := s.gw.RPC(r.Context(), d.WorkerID, http.MethodGet, "/v1/approvals", nil)
+		if err != nil || status != http.StatusOK {
+			continue
+		}
+		var payload struct {
+			Approvals []struct {
+				ID        string         `json:"id"`
+				SessionID string         `json:"sessionId"`
+				Tool      string         `json:"tool"`
+				Level     string         `json:"level"`
+				Reason    string         `json:"reason"`
+				Args      map[string]any `json:"args"`
+				CreatedAt time.Time      `json:"createdAt"`
+			} `json:"approvals"`
+		}
+		if json.Unmarshal(body, &payload) != nil {
+			continue
+		}
+		for _, a := range payload.Approvals {
+			out = append(out, queueItem{
+				ID: a.ID, SessionID: a.SessionID, Tool: a.Tool, Level: a.Level,
+				Reason: a.Reason, Args: a.Args, CreatedAt: a.CreatedAt,
+				WorkerID: d.WorkerID, DeviceName: d.Name,
+			})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"approvals": out})
 }
 
 func (s *Server) handleApproval(w http.ResponseWriter, r *http.Request) {
