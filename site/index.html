@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sounder · 把 Agent 跑在设备与云端之间</title>
+<meta name="description" content="Sounder 是一个开源的 Agent 云平台：控制面统一管理用户、设备与会话，执行面跑在 Docker、Kubernetes 或你自己的笔记本上。">
+<meta property="og:title" content="Sounder · Agent cloud, on every device">
+<meta property="og:description" content="Open-source agent cloud platform built on PiG. Multi-user, multi-device, human-in-the-loop.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/logo-1024.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231b1e2a'/%3E%3Cstop offset='1' stop-color='%2308080b'/%3E%3C/linearGradient%3E%3ClinearGradient id='s' x1='0' y1='0' x2='.35' y2='1'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='1' stop-color='%23a9c0ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1024' height='1024' rx='228' fill='url(%23b)'/%3E%3Cpath d='M650 255C650 160 555 155 500 155C395 155 345 215 345 305C345 395 445 428 512 445C595 468 670 505 670 600C670 695 590 745 500 745C405 745 345 700 345 620' transform='translate(5 62)' fill='none' stroke='url(%23s)' stroke-width='120' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #07070a;
+    --panel: #0d0d12;
+    --panel2: #121218;
+    --line: #202028;
+    --line2: #2e2e39;
+    --fg: #ececf1;
+    --muted: #8f8f9c;
+    --muted2: #61616e;
+    --accent: #4f7cff;
+    --accent2: #86a4ff;
+    --violet: #8b5bff;
+    --ok: #3ecf8e;
+    --warn: #e5a13a;
+    --max: 1120px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .wrap { width: min(var(--max), calc(100% - 48px)); margin: 0 auto; }
+
+  /* ambient background */
+  .bg-glow {
+    position: fixed; inset: 0; pointer-events: none; z-index: -1;
+    background:
+      radial-gradient(60% 45% at 76% 0%, #4f7cff24 0%, transparent 70%),
+      radial-gradient(45% 40% at 12% 18%, #8b5bff14 0%, transparent 70%),
+      radial-gradient(50% 45% at 50% 100%, #4f7cff10 0%, transparent 70%);
+  }
+  .bg-grid {
+    position: fixed; inset: 0; pointer-events: none; z-index: -1; opacity: .35;
+    background-image: linear-gradient(#ffffff06 1px, transparent 1px), linear-gradient(90deg, #ffffff06 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(70% 55% at 50% 0%, #000 0%, transparent 80%);
+  }
+
+  /* nav */
+  .nav {
+    position: sticky; top: 0; z-index: 20;
+    border-bottom: 1px solid #ffffff0d;
+    background: #07070acc; backdrop-filter: blur(14px);
+  }
+  .nav .wrap { height: 58px; display: flex; align-items: center; gap: 22px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: .01em; }
+  .brand img { width: 26px; height: 26px; border-radius: 8px; display: block; }
+  .brand small { color: var(--muted2); font-weight: 500; letter-spacing: .02em; }
+  .nav nav { display: flex; gap: 20px; margin-left: 8px; font-size: 13px; color: var(--muted); }
+  .nav nav a:hover { color: var(--fg); }
+  .nav .actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line2);
+    background: #ffffff05; color: var(--fg); font-size: 13px; font-weight: 550; cursor: pointer;
+    transition: .16s ease;
+  }
+  .btn:hover { border-color: #4b4b5a; background: #ffffff0a; }
+  .btn.primary {
+    border: 0; background: linear-gradient(135deg, #5b8cff, #7a5cff 70%);
+    box-shadow: 0 8px 24px #4f7cff2e, inset 0 1px 0 #ffffff40;
+  }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.small { height: 30px; padding: 0 11px; font-size: 12px; }
+
+  /* hero */
+  .hero { padding: 84px 0 64px; }
+  .hero .wrap { display: grid; grid-template-columns: 1.05fr .95fr; gap: 54px; align-items: center; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px;
+    border: 1px solid var(--line); border-radius: 999px; background: #ffffff04;
+    color: var(--muted); font-size: 11.5px; letter-spacing: .05em;
+  }
+  .badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  h1 {
+    margin: 20px 0 16px; font-size: clamp(36px, 4.4vw, 58px); line-height: 1.08;
+    letter-spacing: -.035em; font-weight: 720;
+  }
+  h1 .grad {
+    background: linear-gradient(100deg, #fff 10%, #a9c0ff 55%, #8b5bff 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lede { margin: 0; color: var(--muted); font-size: 16px; max-width: 560px; }
+  .lede strong { color: #c9d4ff; font-weight: 550; }
+  .cta { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+  .meta { margin-top: 22px; display: flex; gap: 18px; color: var(--muted2); font-size: 12px; flex-wrap: wrap; }
+  .meta span { display: flex; align-items: center; gap: 6px; }
+
+  /* mock */
+  .mock-shell { position: relative; }
+  .mock-shell::before {
+    content: ""; position: absolute; inset: -34px -18px -26px;
+    background: radial-gradient(55% 60% at 60% 40%, #4f7cff2b, transparent 72%);
+    filter: blur(18px); z-index: 0;
+  }
+  .mock {
+    position: relative; z-index: 1; border: 1px solid #2a2a35; border-radius: 16px;
+    background: linear-gradient(180deg, #101017, #0a0a0f);
+    box-shadow: 0 30px 80px #00000080, inset 0 1px 0 #ffffff0a;
+    overflow: hidden;
+  }
+  .mock-top {
+    display: flex; align-items: center; gap: 8px; padding: 11px 14px;
+    border-bottom: 1px solid #ffffff0a; color: var(--muted); font-size: 11.5px;
+  }
+  .mock-top .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .mock-top .pill { margin-left: auto; font-size: 10.5px; padding: 2px 8px; border-radius: 999px; }
+  .pill.warn { color: #ffd28a; background: #e5a13a1c; border: 1px solid #e5a13a3d; }
+  .mock-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 88%; padding: 9px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.55; }
+  .msg.user { align-self: flex-end; background: #1b274d; border: 1px solid #2c3d72; }
+  .msg.agent { background: #121218; border: 1px solid #24242e; color: #c7c7d2; }
+  .msg code, .mock code { font-size: 11.5px; color: #b9c9ff; background: #4f7cff14; padding: 1px 5px; border-radius: 5px; }
+  .approval { border: 1px solid #e5a13a3d; background: #e5a13a0a; border-radius: 12px; padding: 12px; }
+  .ap-head { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #ffd28a; }
+  .ap-head span { margin-left: auto; font-weight: 400; color: #c9a563; font-size: 10.5px; }
+  .ap-body { margin: 7px 0 10px; font-size: 11.5px; color: #b3a184; font-family: ui-monospace, Menlo, monospace; }
+  .ap-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .ap-actions button { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid #3a3a46; background: #16161d; color: #cfcfda; font-size: 11px; }
+  .ap-actions .ok { border-color: #4f7cff88; background: #4f7cff22; color: #dbe5ff; }
+  .tool { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+  .tool .ok { color: var(--ok); }
+  .composer { margin-top: 2px; display: flex; align-items: center; color: var(--muted2); font-size: 12px; border: 1px solid #24242e; border-radius: 10px; padding: 9px 10px 9px 12px; background: #0b0b10; }
+  .composer .send { margin-left: auto; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #5b8cff, #7a5cff); font-size: 12px; }
+
+  /* sections */
+  section { padding: 72px 0; }
+  .kicker { color: var(--accent2); font-size: 11px; font-weight: 650; letter-spacing: .16em; text-transform: uppercase; }
+  h2 { margin: 10px 0 12px; font-size: clamp(26px, 3vw, 36px); letter-spacing: -.025em; line-height: 1.15; }
+  .section-lede { margin: 0; color: var(--muted); max-width: 680px; }
+
+  .features .grid { margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card {
+    padding: 20px; border: 1px solid var(--line); border-radius: 14px;
+    background: linear-gradient(180deg, #0e0e14, #0b0b10);
+    transition: .18s ease;
+  }
+  .card:hover { border-color: #343442; transform: translateY(-2px); background: #101017; }
+  .card .ico { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: #4f7cff12; border: 1px solid #4f7cff2e; color: var(--accent2); margin-bottom: 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 14.5px; font-weight: 600; }
+  .card p { margin: 0; color: var(--muted); font-size: 12.8px; }
+  .card .en { display: block; margin-top: 7px; color: var(--muted2); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+
+  /* architecture */
+  .arch { border-top: 1px solid #ffffff08; border-bottom: 1px solid #ffffff08; background: #ffffff02; }
+  .arch .cols { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: stretch; }
+  .arch .col { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: #0c0c11; }
+  .arch .col h4 { margin: 0 0 10px; font-size: 11px; color: var(--muted2); letter-spacing: .12em; text-transform: uppercase; font-weight: 600; }
+  .arch .node { display: flex; align-items: center; gap: 9px; padding: 8px 0; font-size: 12.5px; color: #d6d6e0; }
+  .arch .node + .node { border-top: 1px solid #ffffff08; }
+  .arch .node i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px #4f7cff88; }
+  .arch .node span { color: var(--muted2); margin-left: auto; font-size: 10.5px; font-family: ui-monospace, Menlo, monospace; }
+  .arch .flow { margin-top: 16px; display: flex; align-items: center; gap: 10px; color: var(--muted2); font-size: 11px; font-family: ui-monospace, Menlo, monospace; flex-wrap: wrap; }
+  .arch .flow b { color: var(--accent2); font-weight: 500; }
+
+  /* quickstart */
+  .quick .grid { margin-top: 30px; display: grid; grid-template-columns: 1.05fr .95fr; gap: 24px; align-items: start; }
+  pre {
+    margin: 0; padding: 18px; border: 1px solid #262631; border-radius: 13px;
+    background: #09090e; color: #cfd6e6; font-size: 12.5px; line-height: 1.75; overflow-x: auto;
+    box-shadow: inset 0 1px 0 #ffffff08;
+  }
+  pre .c { color: #5b5b6b; }
+  pre .k { color: #86a4ff; }
+  pre .s { color: #9ee6c0; }
+  .steps { display: flex; flex-direction: column; gap: 10px; }
+  .step { display: flex; gap: 12px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px; background: #0c0c11; }
+  .step b { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: #4f7cff1a; border: 1px solid #4f7cff33; color: #b9c9ff; font-size: 11px; }
+  .step div { font-size: 12.8px; color: #d2d2dc; }
+  .step small { display: block; color: var(--muted2); font-size: 11px; margin-top: 2px; }
+  .step code { color: #b9c9ff; }
+
+  /* docs */
+  .docs { padding-top: 20px; }
+  .docs .links { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 26px; }
+  .doc { display: block; padding: 15px; border: 1px solid var(--line); border-radius: 11px; background: #0c0c11; font-size: 12.5px; }
+  .doc:hover { border-color: #3a3a49; background: #101017; }
+  .doc span { display: block; color: var(--muted2); font-size: 10.5px; margin-top: 4px; }
+
+  footer { border-top: 1px solid #ffffff0a; padding: 28px 0 40px; color: var(--muted2); font-size: 11.5px; }
+  footer .wrap { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  footer img { width: 20px; height: 20px; border-radius: 6px; }
+  footer a:hover { color: var(--fg); }
+  footer .right { margin-left: auto; display: flex; gap: 16px; }
+
+  @media (max-width: 900px) {
+    .hero .wrap, .quick .grid { grid-template-columns: 1fr; gap: 36px; }
+    .hero { padding-top: 56px; }
+    .features .grid { grid-template-columns: repeat(2, 1fr); }
+    .arch .cols { grid-template-columns: 1fr; }
+    .docs .links { grid-template-columns: repeat(2, 1fr); }
+    .nav nav { display: none; }
+  }
+  @media (max-width: 560px) {
+    .wrap { width: calc(100% - 32px); }
+    .features .grid, .docs .links { grid-template-columns: 1fr; }
+    .mock-body { padding: 12px; }
+    .meta { gap: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+<div class="bg-grid"></div>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="assets/logo.svg" alt="Sounder"><span>Sounder</span><small>cloud</small></a>
+    <nav>
+      <a href="#features">功能</a>
+      <a href="#architecture">架构</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="https://github.com/getsounder/sounder/tree/main/docs">文档</a>
+    </nav>
+    <div class="actions">
+      <a class="btn small" href="https://github.com/getsounder/sounder" target="_blank" rel="noreferrer">GitHub ↗</a>
+      <a class="btn small primary" href="#quickstart">开始使用</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <span class="badge"><i></i> Open source · MIT · Built on PiG</span>
+        <h1>把 Agent 跑在<br><span class="grad">设备与云端之间</span></h1>
+        <p class="lede">
+          Sounder 把<strong>控制面</strong>和<strong>执行面</strong>分开：客户端不跑 Agent，
+          所有工具调用都发生在可审计的 Worker 里。Worker 可以在 Docker、Kubernetes，
+          或者你自己的笔记本上。
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/getsounder/sounder" target="_blank" rel="noreferrer">在 GitHub 上查看</a>
+          <a class="btn" href="#quickstart">5 分钟跑起来</a>
+        </div>
+        <div class="meta">
+          <span>◇ 多用户与多设备</span>
+          <span>◇ 人在回路审批</span>
+          <span>◇ 本地模型</span>
+        </div>
+      </div>
+
+      <div class="mock-shell" aria-hidden="true">
+        <div class="mock">
+          <div class="mock-top"><span class="dot"></span> 会话 · worker-local <span class="pill warn">待审批</span></div>
+          <div class="mock-body">
+            <div class="msg user">把 staging 的迁移脚本跑一下，先 dry-run。</div>
+            <div class="msg agent">好的，需要执行 <code>bash</code>：<code>./scripts/migrate.sh --dry-run</code></div>
+            <div class="approval">
+              <div class="ap-head">需要你的批准 <span>bash · L2</span></div>
+              <div class="ap-body">./scripts/migrate.sh --dry-run</div>
+              <div class="ap-actions"><button>拒绝</button><button class="ok">允许</button></div>
+            </div>
+            <div class="tool"><span class="ok">✓</span> tool.end · 0.8s <span>migration ok · 0 pending</span></div>
+            <div class="composer">继续输入… <span class="send">↑</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="features">
+    <div class="wrap">
+      <div class="kicker">Features</div>
+      <h2>一个控制面，管住所有设备上的 Agent</h2>
+      <p class="section-lede">从用户、设备到会话与审批，闭环都在控制面完成；执行面只负责跑。</p>
+
+      <div class="grid">
+        <article class="card">
+          <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 20c.6-3.2 2.7-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16 14.5c2.6.1 4.1 1.8 4.5 4.5"/></svg></div>
+          <h3>多用户、多设备</h3>
+          <p>一个 Worker 就是一台设备。桌面、云端、手机共享同一份会话，身份与配额按用户隔离。</p>
+          <span class="en">Multi-user · multi-device</span>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+          <h3>Computer / Sandbox</h3>
+          <p>Computer 关机保留镜像，Sandbox 挂载目录继续用。按任务选择持久化方式。</p>
+          <span class="en">Two device forms</span>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.2l2.4 2.4 4.8-5"/></svg></div>
+          <h3>人在回路</h3>
+          <p>工具审批、批量允许/拒绝、多问题提问，全部走同一套通道，拒绝会作为工具错误回给模型。</p>
+          <span class="en">Human-in-the-loop</span>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></div>
+          <h3>本地模型</h3>
+          <p>Ollama 开箱即用，也支持 LM Studio、llama.cpp 等任意 OpenAI 兼容端点。</p>
+          <span class="en">Ollama · OpenAI-compatible</span>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg></div>
+          <h3>自托管</h3>
+          <p>Docker Compose 或 Kustomize 一条命令起全栈。数据、密钥、模型都不出你的环境。</p>
+          <span class="en">Docker · Kubernetes</span>
+        </article>
+
+        <article class="card">
+          <div class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+          <h3>可观测</h3>
+          <p>Prometheus 指标、审计日志、会话级事件流。断线自动重连，删除与关机都有补偿。</p>
+          <span class="en">Metrics · audit · SSE</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="architecture" class="arch">
+    <div class="wrap">
+      <div class="kicker">Architecture</div>
+      <h2>控制面与执行面分离</h2>
+      <p class="section-lede">客户端只发 HTTP + SSE；工具调用永远发生在 Worker 内，网关负责把请求安全地送进隧道。</p>
+
+      <div class="cols">
+        <div class="col">
+          <h4>Clients</h4>
+          <div class="node"><i></i> Web <span>browser</span></div>
+          <div class="node"><i></i> Desktop <span>container / process</span></div>
+          <div class="node"><i></i> Mobile <span>iOS · Android</span></div>
+        </div>
+        <div class="col">
+          <h4>Control plane</h4>
+          <div class="node"><i></i> Auth &amp; users <span>OAuth · local</span></div>
+          <div class="node"><i></i> Sessions &amp; devices <span>postgres</span></div>
+          <div class="node"><i></i> Approvals &amp; audit <span>SSE</span></div>
+        </div>
+        <div class="col">
+          <h4>Execution</h4>
+          <div class="node"><i></i> Gateway <span>ws tunnel</span></div>
+          <div class="node"><i></i> Workers <span>computer / sandbox</span></div>
+          <div class="node"><i></i> Models <span>cloud · ollama</span></div>
+        </div>
+      </div>
+      <div class="flow"><b>Clients</b> → HTTP/SSE → <b>Control plane</b> → RPC → <b>Gateway</b> → WebSocket → <b>Workers</b></div>
+    </div>
+  </section>
+
+  <section id="quickstart" class="quick">
+    <div class="wrap">
+      <div class="kicker">Quick start</div>
+      <h2>五分钟，在自己机器上跑起来</h2>
+      <p class="section-lede">只需要 Docker。默认使用本地 Ollama 或任意一个模型 provider。</p>
+
+      <div class="grid">
+        <pre><span class="c"># 1. 克隆并准备环境</span>
+git clone https://github.com/getsounder/sounder.git
+cd sounder
+cp .env.example .env
+
+<span class="c"># 2. 填模型：云端 key 或本地 Ollama</span>
+<span class="c">#   MODEL=ollama/qwen2.5:3b</span>
+<span class="c">#   OLLAMA_HOST=http://host.docker.internal:11434/v1</span>
+
+<span class="c"># 3. 起全栈</span>
+make up
+open <span class="s">http://localhost:3000</span></pre>
+
+        <div class="steps">
+          <div class="step"><b>1</b><div>用 Docker Compose 启动 8 个服务<small>Web · API · Gateway · Worker · Postgres · Redis · MinIO</small></div></div>
+          <div class="step"><b>2</b><div>注册账号，或使用 <code>-auth=false</code> 的单租户本地模式<small>OAuth、邮箱密码、设备配额、审计都内置</small></div></div>
+          <div class="step"><b>3</b><div>新建设备，打开会话，发第一条指令<small>需要审批的工具会出现在聊天里，等你点允许</small></div></div>
+          <div class="step"><b>4</b><div>需要时切到云端 Worker<small>同一份会话，桌面关机也能继续</small></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="docs">
+    <div class="wrap">
+      <div class="kicker">Documentation</div>
+      <h2>继续往下读</h2>
+      <div class="links">
+        <a class="doc" href="https://github.com/getsounder/sounder#readme">快速开始<span>README · 安装与运行</span></a>
+        <a class="doc" href="https://github.com/getsounder/sounder/blob/main/docs/devices.md">设备模型<span>Computer · Sandbox · 配额</span></a>
+        <a class="doc" href="https://github.com/getsounder/sounder/blob/main/docs/user-system.md">用户体系<span>账号 · OAuth · 审计</span></a>
+        <a class="doc" href="https://github.com/getsounder/sounder/blob/main/docs/backup.md">备份与恢复<span>Postgres · worker data</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <img src="assets/logo.svg" alt="">
+    <span>© 2026 getsounder · MIT License</span>
+    <span>Built on <a href="https://pi-in-go.dev" target="_blank" rel="noreferrer">PiG</a></span>
+    <div class="right">
+      <a href="https://github.com/getsounder/sounder" target="_blank" rel="noreferrer">GitHub</a>
+      <a href="https://github.com/getsounder/sounder/blob/main/README.zh-CN.md">中文 README</a>
+      <a href="https://github.com/getsounder/sounder/releases">Releases</a>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
